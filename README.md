@@ -1,5 +1,8 @@
 # Clasp — Bringing Common Lisp and C++ Together
 
+## This is the dev-mbx branch for developing some new thread aware classes.
+
+
 ## NOTE:  June 22, 2016 - Build the 'testing' branch of Clasp along with the <a href="https://github.com/drmeister/externals-clasp">externals-clasp</a> - for now.
 
 ## What Is This?
