@@ -579,7 +579,7 @@ as a STRUCTURE doc and can be retrieved by (documentation 'NAME 'structure)."
         (error "Structure definition for ~a cannot have :INITIAL-OFFSET without :TYPE."
                name)))
 
-    ;; :named and type consistency.
+    ;;:named and type consistency.
     (when named
       (unless type
         (error "Structure definition for ~a cannot have :NAMED without :TYPE."

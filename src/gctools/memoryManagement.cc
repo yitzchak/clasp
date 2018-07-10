@@ -491,6 +491,11 @@ void shutdown_gcroots_in_module(GCRootsInModule* roots) {
   printf("%s:%d   Here deallocate the roots and tell the GC that they don't need to be tracked anymore\n", __FILE__, __LINE__ );
 #endif
 }
+CL_DOCSTRING("Return the next stamp value");
+CL_DEFUN Fixnum gctools__nextStampValue() {
+  return global_NextStamp;
+}
+
 
 CL_LAMBDA(address args);
 CL_DEFUN void gctools__register_roots(core::T_sp taddress, core::List_sp args) {

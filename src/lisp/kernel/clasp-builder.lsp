@@ -201,7 +201,9 @@ Return files."
          (pathname (probe-file (build-pathname filename :lisp)))
          (name (namestring pathname)))
     (bformat t "Compiling/loading source: %s%N" (namestring name))
-    (let ((m (cmp::compile-file-to-module name :print nil)))
+    (let ((m (cmp::compile-file-list-to-module (list name)
+                                               :output-pathname (compile-file-pathname name)
+                                               :print nil)))
       (progn
         (cmp::link-builtins-module m)
         (cmp::optimize-module-for-compile m))
@@ -582,6 +584,8 @@ Return files."
   (if clean (clean-system #P"src/lisp/kernel/tag/start" :no-prompt t))
   (compile-cclasp* output-file system))
 
+
+
 (defun load-cclasp (&key (system (command-line-arguments-as-list)))
   (progn
     (load-system (select-source-files #P"src/lisp/kernel/tag/bclasp" #P"src/lisp/kernel/cleavir/inline-prep" :system system) :compile-file-load t)
@@ -604,7 +608,16 @@ Return files."
                                                   :system system) :compile-file-load nil))
            (pop *features*))
          (push :cleavir *features*)
-         (compile-cclasp* output-file system))))))
+         #+(or)(compile-cclasp* output-file system)
+         (let ((files (let (files)
+                        (dolist (n (select-source-files (first system) (car (last system)) :system system))
+                          (push (build-pathname n :lisp) files))
+                        (nreverse files))))
+           (cmp::compile-file-list files :output-file "cclasp-common-lisp"
+                                         :output-type core:*clasp-build-mode*
+                                         :print t
+                                         :verbose t)
+           ))))))
 
 #+(or bclasp cclasp)
 (defun bclasp-repl ()

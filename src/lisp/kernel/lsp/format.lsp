@@ -272,9 +272,9 @@
 		      (values (float z original-x) ex))))))))))
 
 (defstruct (format-directive
-	    #-(or ecl clasp)(:print-function %print-format-directive)
-	    #+(or ecl clasp) :named
-	    #+(or ecl clasp) (:type vector))
+	    #+(or)(:print-function %print-format-directive)
+	     :named
+	    (:type vector))
   (string t :type simple-string)
   (start 0 :type (and unsigned-byte fixnum))
   (end 0 :type (and unsigned-byte fixnum))

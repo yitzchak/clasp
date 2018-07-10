@@ -244,7 +244,7 @@ constructed.
 
 
 (defstruct (loop-minimax
-	     #+(or ecl clasp) (:type vector)
+	     (:type vector)
 	     (:constructor make-loop-minimax-internal))
   answer-variable
   type
@@ -374,7 +374,7 @@ code to be loaded.
 
 
 (defstruct (loop-universe
-	     #+(or ecl clasp) (:type vector)
+	     (:type vector)
 	     #-(or ecl clasp)(:print-function print-loop-universe))
   keywords					;hash table, value = (fn-name . extra-data).
   iteration-keywords				;hash table, value = (fn-name . extra-data).
@@ -1264,7 +1264,7 @@ collected result will be returned as the value of the LOOP."
 
 
 (defstruct (loop-collector
-	     #+(or ecl clasp) (:type vector))
+	     (:type vector))
   name
   class
   (history nil)
@@ -1648,7 +1648,7 @@ collected result will be returned as the value of the LOOP."
 
 
 (defstruct (loop-path
-            #+(or ecl clasp) (:type vector)
+            (:type vector)
             (:copier nil)
             (:predicate nil))
   names
