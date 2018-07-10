@@ -168,10 +168,8 @@ and the pathname of the source file - this will also be used as the module initi
 (defun bclasp-loop-read-and-compile-file-forms (source-sin environment)
   (let ((eof-value (gensym)))
     (loop
-      (let ((eof (peek-char t source-sin nil eof-value)))
-        (unless (eq eof eof-value)
-          (let ((pos (core:input-stream-source-pos-info source-sin)))
-            (setq *current-form-lineno* (core:source-file-pos-lineno pos)))))
+      ;; Required to update the source pos info. FIXME!?
+      (peek-char t source-sin nil)
       ;; FIXME: if :environment is provided we should probably use a different read somehow
       (let ((core:*current-source-pos-info* (core:input-stream-source-pos-info source-sin))
             (form (read source-sin nil eof-value)))
@@ -195,7 +193,7 @@ and the pathname of the source file - this will also be used as the module initi
                                       compile-file-hook
                                       type
                                       output-type
-                                      source-debug-file-name
+                                      source-debug-pathname
                                       (source-debug-offset 0)
                                       (print *compile-print*)
                                       (verbose *compile-verbose*)
@@ -207,8 +205,8 @@ and the pathname of the source file - this will also be used as the module initi
 - output-path :: A pathname.
 - compile-file-hook :: A function that will do the compile-file
 - type :: :kernel or :user (I'm not sure this is useful anymore)
-- source-debug-file-name :: A namestring.
-3- source-debug-offset :: An integer.
+- source-debug-pathname :: A pathname.
+- source-debug-offset :: An integer.
 - environment :: Arbitrary, passed only to hook
 Compile a lisp source file into an LLVM module."
   ;; TODO: Save read-table and package with unwind-protect
@@ -231,6 +229,11 @@ Compile a lisp source file into an LLVM module."
     (or module (error "module is NIL"))
     ;; If a truename is provided then spoof the file-system to treat input-pathname
     ;; as source-truename with the given offset
+    
+    (when source-debug-pathname
+      (core:source-file-info (namestring input-pathname) source-debug-pathname source-debug-offset nil))
+    (when *compile-verbose*
+      (bformat t "; Compiling file: %s%N" (namestring input-pathname)))
     (with-one-source-database
         (cmp-log "About to start with-compilation-unit%N")
       (with-compilation-unit ()
@@ -247,13 +250,13 @@ Compile a lisp source file into an LLVM module."
                        ((null cur) module)
                     (let* ((*compile-file-pathname* (pathname (merge-pathnames input-pathname)))
                            (*compile-file-truename* (translate-logical-pathname *compile-file-pathname*)))
-                      (when source-debug-file-name
-                        (core:source-file-info (namestring input-pathname) source-debug-file-name source-debug-offset nil))
+                      (when source-debug-pathname
+                        (core:source-file-info (namestring input-pathname) source-debug-pathname source-debug-offset nil))
                       (when *compile-verbose*
                         (bformat t "; Compiling file: %s%N" (namestring input-pathname)))
                       (with-open-stream (source-sin (open input-pathname :direction :input))
-                        (with-source-file-names (:source-file-name *compile-file-truename*
-                                                 :source-debug-file-name source-debug-file-name
+                        (with-source-pathnames (:source-pathname *compile-file-truename*
+                                                 :source-debug-pathname source-debug-pathname
                                                  :source-debug-offset source-debug-offset)
                           (loop-read-and-compile-file-forms source-sin environment compile-file-hook)))))
                 (make-boot-function-global-variable *the-module* run-all-function))))
@@ -276,9 +279,9 @@ Compile a lisp source file into an LLVM module."
                             (system-p nil system-p-p)
                             (external-format :default)
                             ;; If we are spoofing the source-file system to treat given-input-name
-                            ;; as a part of another file then use source-debug-file-name to provide the
+                            ;; as a part of another file then use source-debug-pathname to provide the
                             ;; truename of the file we want to mimic
-                            source-debug-file-name
+                            source-debug-pathname
                             ;; This is the offset we want to spoof
                             (source-debug-offset 0)
                             ;; output-type can be (or :fasl :bitcode :object)
@@ -296,14 +299,13 @@ Compile a lisp source file into an LLVM module."
     ;; Do the different kind of compile-file here
     (let* ((*compile-print* print)
            (*compile-verbose* verbose)
-           (*current-form-lineno* 0)
            (output-path (compile-file-pathname output-file :output-file output-file :output-type output-type ))
            (*compile-file-output-pathname* output-path)
            (module (compile-file-list-to-module input-file-list
                                                 :type type
                                                 :output-pathname output-path
                                                 :output-type output-type
-                                                :source-debug-file-name source-debug-file-name
+                                                :source-debug-pathname source-debug-pathname
                                                 :source-debug-offset source-debug-offset
                                                 :compile-file-hook *cleavir-compile-file-hook*
                                                 :environment environment
@@ -352,9 +354,9 @@ Compile a lisp source file into an LLVM module."
                        (system-p nil system-p-p)
                        (external-format :default)
                        ;; If we are spoofing the source-file system to treat given-input-name
-                       ;; as a part of another file then use source-debug-file-name to provide the
+                       ;; as a part of another file then use source-debug-pathname to provide the
                        ;; truename of the file we want to mimic
-                       source-debug-file-name
+                       source-debug-pathname
                        ;; This is the offset we want to spoof
                        (source-debug-offset 0)
                        ;; output-type can be (or :fasl :bitcode :object)

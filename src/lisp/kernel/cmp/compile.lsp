@@ -19,21 +19,13 @@
        (cmp-log "About to optimize-module%N")
        (when (and ,optimize ,optimize-level) (funcall ,optimize ,module ,optimize-level )))))
 
-(defmacro with-source-file-names((&key source-file-name
-                                    source-debug-file-name
-                                    (source-debug-offset 0)
-                                    (source-debug-use-lineno-p t)) &rest body)
-  `(let* ((*source-file-name* ,source-file-name)
-          (*source-debug-file-name* (if ,source-debug-file-name
-                                       ,source-debug-file-name
-                                       ,source-file-name))
-          (*source-debug-offset* ,source-debug-offset)
-	  (*source-debug-use-lineno-p* ,source-debug-use-lineno-p))
+(defmacro with-source-pathnames ((&key source-pathname
+                                    source-debug-pathname
+                                    (source-debug-offset 0)) &rest body)
+  `(let* ((*source-debug-pathname* (or ,source-debug-pathname ,source-pathname))
+          (*source-debug-offset* ,source-debug-offset))
      (with-irbuilder ((llvm-sys:make-irbuilder *llvm-context*))
        ,@body)))
-     
-          
-     
 
 (defun compile-with-hook (compile-hook name &optional definition env pathname &key (linkage 'llvm-sys:internal-linkage))
   "Dispatch to clasp compiler or cleavir-clasp compiler if available.
@@ -52,7 +44,7 @@ We could do more fancy things here - like if cleavir-clasp fails, use the clasp 
                            "repl-code")))
         (with-module (:module *the-module*
                       :optimize nil)
-          (with-source-file-names (:source-file-name (namestring pathname))
+          (with-source-pathnames (:source-pathname (namestring pathname))
             (cmp-log "Dumping module%N")
             (cmp-log-dump-module *the-module*)
             (compile-with-hook compile-hook bind-to-name definition env pathname :linkage linkage)))))))
