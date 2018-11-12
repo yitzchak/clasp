@@ -73,7 +73,8 @@ def options(ctx):
                    help = 'Build OpenMPI version of iclasp and cclasp')
     ctx.add_option('--mpi-path', action = 'store', dest = 'mpi_path',
                    help = 'Build OpenMPI version of iclasp and cclasp, provide the path to mpicc and mpic++')
-
+    ctx.add_option('--enable-opencl', action = 'store_true', dest = 'enable_opencl',
+                   help = 'Build OpenCL version of iclasp and cclasp')
 #
 # Global variables for the build
 #
@@ -224,6 +225,15 @@ DEBUG_OPTIONS = [
     "CONFIG_VAR_COOL", # mps setting
     "USE_HUMAN_READABLE_BITCODE"
 ]
+
+def custom_permutations():
+    return ["", "_mpi", "_opencl", "_mpi_opencl"]
+
+def enable_mpi(variant):
+    return (variant.custom.find("_mpi") >= 0)
+
+def enable_opencl(variant):
+    return (variant.custom.find("_opencl") >= 0)
 
 def build_extension(bld):
     log.pprint('BLUE', "build_extension()")
@@ -382,22 +392,53 @@ def setup_mpi_compiler(cfg,variant):
 class variant(object):
     build_with_debug_info = False
 
+    def configure_variant(self,cfg,env_copy):
+        print("variant.configure_variant custom = %s" % self.custom)
+        print("variant.configure_variant  enable_mpi = %d" % enable_mpi(self))
+        print("variant.configure_variant  enable_opencl = %d" % enable_opencl(self))
+        if (enable_mpi(self)):
+            cfg.define("USE_MPI",1)
+        if (enable_opencl(self)):
+            cfg.define("USE_OPENCL",1)
     def debug_extension(self):
         return "-d" if self.build_with_debug_info else ""
     def debug_dir_extension(self):
         return "_d" if self.build_with_debug_info else ""
     def mpi_extension(self):
-        return "-mpi" if self.enable_mpi else ""
+        return "-mpi" if enable_mpi(self) else ""
     def mpi_dir_extension(self):
-        return "_mpi" if self.enable_mpi else ""
+        return "_mpi" if enable_mpi(self) else ""
+    def opencl_extension(self):
+        return "-opencl" if enable_opencl(self) else ""
+    def opencl_dir_extension(self):
+        return "_opencl" if enable_opencl(self) else ""
+    def custom_extension(self):
+        if (self.mpi_extension()!="" and self.opencl_extension()!=""):
+            return self.mpi_extension()+self.opencl_extension()
+        if (self.mpi_extension()):
+            return self.mpi_extension()
+        if (self.opencl_extension()):
+            return self.opencl_extension()
+        return ""
+    def custom_dir_extension(self):
+        if (self.mpi_dir_extension()!="" and self.opencl_dir_extension()!=""):
+            return self.mpi_dir_extension()+self.opencl_dir_extension()
+        if (self.mpi_dir_extension()):
+            return self.mpi_dir_extension()
+        if (self.opencl_dir_extension()):
+            return self.opencl_dir_extension()
+        return ""
     def executable_name(self,stage=None):
         if ( stage == None ):
-            use_stage = self.stage_char
+            if (hasattr(self,'stage_char')):
+                use_stage = self.stage_char
+            else:
+                use_stage = "i"
         else:
             use_stage = stage
         if (not (use_stage>='a' and use_stage <= 'z')):
             raise Exception("Bad stage: %s"% use_stage)
-        return '%s%s-%s%s%s' % (use_stage,APP_NAME,self.gc_name,self.mpi_extension(),self.debug_extension())
+        return '%s%s-%s%s%s' % (use_stage,APP_NAME,self.gc_name,self.custom_extension(),self.debug_extension())
     def fasl_name(self,build,stage=None):
         if ( stage == None ):
             use_stage = self.stage_char
@@ -406,15 +447,15 @@ class variant(object):
         if (not (use_stage>='a' and use_stage <= 'z')):
             raise Exception("Bad stage: %s"% use_stage)
         if (build.env.CLASP_BUILD_MODE == 'fasl'):
-            return build.path.find_or_declare('fasl/%s%s-%s%s%s-image.lfasl' % (use_stage,APP_NAME,self.gc_name,self.mpi_extension(),self.debug_extension()))
+            return build.path.find_or_declare('fasl/%s%s-%s%s%s-image.lfasl' % (use_stage,APP_NAME,self.gc_name,self.custom_extension(),self.debug_extension()))
         else:
-            return build.path.find_or_declare('fasl/%s%s-%s%s%s-image.fasl' % (use_stage,APP_NAME,self.gc_name,self.mpi_extension(),self.debug_extension()))
+            return build.path.find_or_declare('fasl/%s%s-%s%s%s-image.fasl' % (use_stage,APP_NAME,self.gc_name,self.custom_extension(),self.debug_extension()))
     def fasl_dir(self, stage=None):
         if ( stage == None ):
             use_stage = self.stage_char
         else:
             use_stage = stage
-        return 'fasl/%s%s-%s%s-bitcode' % (use_stage,APP_NAME,self.gc_name,self.mpi_extension())
+        return 'fasl/%s%s-%s%s-bitcode' % (use_stage,APP_NAME,self.gc_name,self.custom_extension())
 
     def common_lisp_output_name_list(self,build,input_files,stage=None,variant=None):
         if ( stage == None ):
@@ -435,14 +476,11 @@ class variant(object):
             else:
                 return [build.path.find_or_declare(name+".bc")]
     def variant_dir(self):
-        return "%s%s%s"%(self.gc_name,self.mpi_dir_extension(),self.debug_dir_extension())
+        return "%s%s%s"%(self.gc_name,self.custom_dir_extension(),self.debug_dir_extension())
            
     def variant_name(self):
-        if (self.enable_mpi):
-            mpi_part = "-mpi"
-        else:
-            mpi_part = ""
-        return "%s%s" % (self.gc_name,mpi_part)
+        part = self.custom_extension()
+        return "%s%s" % (self.gc_name,part)
     def bitcode_name(self):
         return "%s%s"%(self.variant_name(),self.debug_extension())
     def cxx_all_bitcode_name(self):
@@ -486,9 +524,10 @@ class variant(object):
 
 class boehm_base(variant):
     gc_name = 'boehm'
-    enable_mpi = False
     def configure_variant(self,cfg,env_copy):
+        super(boehm_base,self).configure_variant(cfg,env_copy)
         cfg.define("USE_BOEHM",1)
+        print("boehm_base enable_mpi -> %s" % cfg.env.enable_mpi)
         setup_clang_compiler(cfg,self)
         if (cfg.env['DEST_OS'] == DARWIN_OS ):
             log.debug("boehm_base cfg.env.LTO_FLAG = %s", cfg.env.LTO_FLAG)
@@ -515,8 +554,8 @@ class boehm_d(boehm_base):
         super(boehm_d,self).configure_variant(cfg,env_copy)
 
 class mps_base(variant):
-    enable_mpi = False
     def configure_variant(self,cfg,env_copy):
+        super(mps_base,self).configure_variant(cfg,env_copy)
         cfg.define("USE_MPS",1)
         setup_clang_compiler(cfg,self)
         if (cfg.env['DEST_OS'] == DARWIN_OS ):
@@ -553,191 +592,6 @@ class mps_d(mps_base):
     def configure_variant(self,cfg,env_copy):
         cfg.setenv("mps_d", env=env_copy.derive())
         super(mps_d,self).configure_variant(cfg,env_copy)
-
-class iboehm(boehm):
-    stage_char = 'i'
-class aboehm(boehm):
-    stage_char = 'a'
-class bboehm(boehm):
-    stage_char = 'b'
-class cboehm(boehm):
-    stage_char = 'c'
-
-class iboehm_d(boehm_d):
-    stage_char = 'i'
-class aboehm_d(boehm_d):
-    stage_char = 'a'
-class bboehm_d(boehm_d):
-    stage_char = 'b'
-class cboehm_d(boehm_d):
-    stage_char = 'c'
-
-class imps(mps):
-    stage_char = 'i'
-class amps(mps):
-    stage_char = 'a'
-class bmps(mps):
-    stage_char = 'b'
-class cmps(mps):
-    stage_char = 'c'
-
-class imps_d(mps_d):
-    stage_char = 'i'
-class amps_d(mps_d):
-    stage_char = 'a'
-class bmps_d(mps_d):
-    stage_char = 'b'
-class cmps_d(mps_d):
-    stage_char = 'c'
-
-class impsprep(mpsprep):
-    stage_char = 'i'
-class ampsprep(mpsprep):
-    stage_char = 'a'
-class bmpsprep(mpsprep):
-    stage_char = 'b'
-class cmpsprep(mpsprep):
-    stage_char = 'c'
-
-class impsprep_d(mpsprep_d):
-    stage_char = 'i'
-class ampsprep_d(mpsprep_d):
-    stage_char = 'a'
-class bmpsprep_d(mpsprep_d):
-    stage_char = 'b'
-class cmpsprep_d(mpsprep_d):
-    stage_char = 'c'
-
-###### MPI versions
-class boehm_mpi_base(variant):
-    gc_name = 'boehm'
-    enable_mpi = True
-    def configure_variant(self,cfg,env_copy):
-        cfg.define("USE_BOEHM",1)
-        cfg.define("USE_MPI",1)
-        setup_mpi_compiler(cfg,self)
-        if (cfg.env['DEST_OS'] == DARWIN_OS ):
-            log.debug("boehm_mpi_base cfg.env.LTO_FLAG = %s", cfg.env.LTO_FLAG)
-            if (cfg.env.LTO_FLAG):
-                cfg.env.append_value('LDFLAGS', '-Wl,-object_path_lto,%s_lib.lto.o' % self.executable_name())
-        log.info("Setting up boehm library cfg.env.STLIB_BOEHM = %s ", cfg.env.STLIB_BOEHM)
-        log.info("Setting up boehm library cfg.env.LIB_BOEHM = %s", cfg.env.LIB_BOEHM)
-        if (cfg.env.LIB_BOEHM == [] ):
-            cfg.env.append_value('STLIB',cfg.env.STLIB_BOEHM)
-        else:
-            cfg.env.append_value('LIB',cfg.env.LIB_BOEHM)
-        self.common_setup(cfg)
-
-class boehm_mpi(boehm_mpi_base):
-    def configure_variant(self,cfg,env_copy):
-        cfg.setenv(self.variant_dir(), env=env_copy.derive())
-        super(boehm_mpi,self).configure_variant(cfg,env_copy)
-
-class boehm_mpi_d(boehm_mpi_base):
-    build_with_debug_info = True
-
-    def configure_variant(self,cfg,env_copy):
-        cfg.setenv("boehm_mpi_d", env=env_copy.derive())
-        super(boehm_mpi_d,self).configure_variant(cfg,env_copy)
-
-class mps_mpi_base(variant):
-    enable_mpi = True
-    def configure_variant(self,cfg,env_copy):
-        cfg.define("USE_MPS",1)
-        cfg.define("USE_MPI",1)
-        setup_mpi_compiler(cfg,self)
-        if (cfg.env['DEST_OS'] == DARWIN_OS ):
-            if (cfg.env.LTO_FLAG):
-                cfg.env.append_value('LDFLAGS', '-Wl,-object_path_lto,%s_lib.lto.o' % self.executable_name())
-        self.common_setup(cfg)
-
-class mpsprep_mpi(mps_mpi_base):
-    gc_name = 'mpsprep'
-
-    def configure_variant(self,cfg,env_copy):
-        cfg.setenv("mpsprep_mpi", env=env_copy.derive())
-        cfg.define("RUNNING_GC_BUILDER",1)
-        super(mpsprep_mpi,self).configure_variant(cfg,env_copy)
-
-class mpsprep_mpi_d(mps_mpi_base):
-    gc_name = 'mpsprep'
-    build_with_debug_info = True
-
-    def configure_variant(self,cfg,env_copy):
-        cfg.setenv("mpsprep_mpi_d", env=env_copy.derive())
-        cfg.define("RUNNING_GC_BUILDER",1)
-        super(mpsprep_mpi_d,self).configure_variant(cfg,env_copy)
-
-class mps_mpi(mps_mpi_base):
-    gc_name = 'mps'
-    def configure_variant(self,cfg,env_copy):
-        cfg.setenv("mps_mpi", env=env_copy.derive())
-        super(mps_mpi,self).configure_variant(cfg,env_copy)
-
-class mps_mpi_d(mps_mpi_base):
-    gc_name = 'mps'
-    build_with_debug_info = True
-
-    def configure_variant(self,cfg,env_copy):
-        cfg.setenv("mps_mpi_d", env=env_copy.derive())
-        super(mps_mpi_d,self).configure_variant(cfg,env_copy)
-
-class iboehm_mpi(boehm_mpi):
-    stage_char = 'i'
-class aboehm_mpi(boehm_mpi):
-    stage_char = 'a'
-class bboehm_mpi(boehm_mpi):
-    stage_char = 'b'
-class cboehm_mpi(boehm_mpi):
-    stage_char = 'c'
-
-class iboehm_mpi_d(boehm_mpi_d):
-    stage_char = 'i'
-class aboehm_mpi_d(boehm_mpi_d):
-    stage_char = 'a'
-class bboehm_mpi_d(boehm_mpi_d):
-    stage_char = 'b'
-class cboehm_mpi_d(boehm_mpi_d):
-    stage_char = 'c'
-
-class imps_mpi(mps_mpi):
-    stage_char = 'i'
-class amps_mpi(mps_mpi):
-    stage_char = 'a'
-class bmps_mpi(mps_mpi):
-    stage_char = 'b'
-class cmps_mpi(mps_mpi):
-    stage_char = 'c'
-
-class imps_mpi_d(mps_mpi_d):
-    stage_char = 'i'
-class amps_mpi_d(mps_mpi_d):
-    stage_char = 'a'
-class bmps_mpi_d(mps_mpi_d):
-    stage_char = 'b'
-class cmps_mpi_d(mps_mpi_d):
-    stage_char = 'c'
-
-class impsprep_mpi(mpsprep_mpi):
-    stage_char = 'i'
-class ampsprep_mpi(mpsprep_mpi):
-    stage_char = 'a'
-class bmpsprep_mpi(mpsprep_mpi):
-    stage_char = 'b'
-class cmpsprep_mpi(mpsprep_mpi):
-    stage_char = 'c'
-
-class impsprep_mpi_d(mpsprep_mpi_d):
-    stage_char = 'i'
-class ampsprep_mpi_d(mpsprep_mpi_d):
-    stage_char = 'a'
-class bmpsprep_mpi_d(mpsprep_mpi_d):
-    stage_char = 'b'
-class cmpsprep_mpi_d(mpsprep_mpi_d):
-    stage_char = 'c'
-
-
-
 
     
 def configure(cfg):
@@ -1096,28 +950,48 @@ def configure(cfg):
     log.debug("cfg.env.LIB = %s", cfg.env.LIB)
 ####### Setup the variants
     env_copy = cfg.env.derive()
-    log.info("About to setup variants - cfg.options.enabl_empi = %s" % cfg.options.enable_mpi)
+    log.info("About to setup variants - cfg.options.enable_mpi = %s" % cfg.options.enable_mpi)
+    custom_variants = [ "" ];
     if (cfg.options.enable_mpi):
         log.info("Enabling MPI")
-        mpi_variants = [False,True]
+        new_variants = [];
+        for var in custom_variants:
+            new_var = var
+            new_variants = new_variants + [new_var]
+        for var in custom_variants:
+            new_var = var+"_mpi"
+            new_variants = new_variants + [new_var]
+        custom_variants = new_variants
         cfg.env.ENABLE_MPI = True
     else:
         log.info("Disabling MPI")
-        mpi_variants = [False]
         cfg.env.ENABLE_MPI = False
+    if (cfg.options.enable_opencl):
+        log.info("Enabling OPENCL")
+        new_variants = [];
+        for var in custom_variants:
+            new_var = var
+            new_variants = new_variants + [new_var]
+        for var in custom_variants:
+            new_var = var+"_opencl"
+            new_variants = new_variants + [new_var]
+        custom_variants = new_variants
+        cfg.env.ENABLE_OPENCL = True
+    else:
+        log.info("Disabling OPENCL")
+        cfg.env.ENABLE_OPENCL = False
+    log.info("custom_variants = %s" % custom_variants)
     for gc in GCS_NAMES:
-        for enable_mpi in mpi_variants:
+        for custom_variant in custom_variants:
             for debug_build in [True, False]:
-                if (enable_mpi):
-                    mpi_part = "_mpi"
-                else:
-                    mpi_part = ""
                 if (debug_build):
                     debug_part = "_d"
                 else:
                     debug_part = ""
-                variant_name = gc+mpi_part+debug_part
-                variant_instance = eval("i" + variant_name + "()")
+                variant_name = gc+debug_part
+#                variant_instance = eval("i" + variant_name + "()")
+                variant_instance = eval(variant_name + "()")
+                variant_instance.custom = custom_variant
                 log.pprint("Blue","Setting up variant: %s" % variant_instance.variant_dir())
                 log.pprint("BLUE","variant_name = %s    variant_instance = %s" % (variant_name, variant_instance) )
                 variant_instance.configure_variant(cfg, env_copy)
@@ -1149,8 +1023,20 @@ def build(bld):
     if not bld.variant:
         bld.fatal("Call waf with build_variant, e.g. './waf --jobs 2 --verbose build_cboehm'")
 
-    variant = eval(bld.variant + "()")
+    print("bld.path.abspath() = %s" % bld.path.abspath())
+    print("Building variant bld.variant -> %s   custom -> %s  bld.variant_name -> %s" % (bld.variant, bld.custom, bld.variant_name))
+    print("     bld.variant_base_name -> %s" % bld.variant_base_name)
+    base = eval(bld.variant_base_name)
+    print("       base = %s" % base)
+    new_class = type(bld.variant_name,(base,),{})
+    print("  new_class = %s" % new_class)
+    variant = new_class()
+    print("  variant   = %s" % variant)
+    variant.custom = bld.custom
     bld.variant_obj = variant
+    print("  enable_mpi -> %s" % enable_mpi(variant))
+    print("  enable_opencl -> %s" % enable_opencl(variant))
+    print("  variant_dir -> %s" % variant.variant_dir())
 
     # Reinitialize logging system with a handler that appends to ./build/variant/build.log
     log.reinitialize(console_level = logging.DEBUG if Logs.verbose >= 1 else logging.INFO,
@@ -1489,16 +1375,19 @@ def init(ctx):
     from waflib.Build import BuildContext, CleanContext, InstallContext, UninstallContext, ListContext, StepContext, EnvContext
     log.pprint('BLUE', "Running init() - this constructs the matrix of legal waf operation names")
     for gc in GCS_NAMES:
-        for enable_mpi in ["", "_mpi"]:
+        for enable_custom in custom_permutations():
             for debug_build in ["", "_d"]:
-                variant_name = "%s%s%s" % (gc,enable_mpi,debug_build)
+                variant_name = "%s%s%s" % (gc,enable_custom,debug_build)
                 for ctx in (BuildContext, CleanContext, InstallContext, UninstallContext, ListContext, StepContext, EnvContext):
                     name = ctx.__name__.replace('Context','').lower()
                     for stage_char in STAGE_CHARS:
                         # This instantiates classes, all with the same name 'tmp'.
                         class tmp(ctx):
-                            variant = variant_name
-                            cmd = name + '_' + stage_char + variant_name
+                            variant_base_name = ("%s%s" % (gc,debug_build))
+                            variant_name = ("%s%s%s" % (gc,enable_custom,debug_build))
+                            variant = ("%s%s%s" % (gc,enable_custom,debug_build))
+                            cmd = name + '_' + stage_char + ("%s%s%s" % (gc,enable_custom,debug_build))
+                            custom = enable_custom
                             stage = stage_char
 
             # NOTE: these are kinda bitrotten, but left here for now as a reference
@@ -1811,7 +1700,12 @@ def make_pump_tasks(bld, template_dir, output_dir):
     for template_node in templates:
         template_name = template_node.name
         output_path = os.path.join("generated/", output_dir, template_name.replace(".pmp", ".h"))
+        print("make_pump_tasks output_dir = %s" % output_dir)
+        print("make_pump_tasks output_path = %s" % output_path)
         output_node = bld.path.find_or_declare(output_path)
+        print("make_pump_tasks bld.path = %s" % bld.path.abspath())
+        print("make_pump_tasks bld.path.get_bld() = %s" % bld.path.get_bld().abspath())
+        print("make_pump_tasks output_node = %s" % output_node.abspath())
         log.debug("Creating expand_pump_template: %s -> %s", template_node.abspath(), output_node.abspath())
         assert output_node
         task = expand_pump_template(env = bld.env)

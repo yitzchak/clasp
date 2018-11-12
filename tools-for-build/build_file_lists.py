@@ -187,6 +187,9 @@ def collect_clasp_c_source_files(bld):
              collect_c_source_files(bld, 'src/mpip/', [
                  'claspMpi'
              ]) + \
+             collect_c_source_files(bld, 'src/openclp/', [
+                 'claspOpenCL'
+             ]) + \
              collect_c_source_files(bld, 'src/asttooling/', [
                  'astVisitor',
                  'astExpose',

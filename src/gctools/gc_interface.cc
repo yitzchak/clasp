@@ -146,6 +146,8 @@ typedef bool _Bool;
 
 #include <clasp/mpip/claspMpi.h>
 
+#include <clasp/openclp/claspOpenCL.h>
+
 #include <clasp/clbind/clbind.h>
 
 #include <clasp/llvmo/intrinsics.h>
