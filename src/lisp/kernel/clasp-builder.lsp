@@ -7,7 +7,7 @@
 
 (defparameter *number-of-jobs* 1)
 
-;;;#+(or)
+#+(or)
 (progn
   (defparameter *log* (open "/tmp/clasp-builder-log.txt" :direction :output :if-exists :supersede))
   (si:fset 'core::mmsg #'(lambda (whole env)
@@ -18,7 +18,7 @@
                                 (finish-output *log*))))
            t))
 
-#+(or)
+;;;#+(or)
 (si:fset 'core::mmsg #'(lambda (whole env)
                          nil)
          t)
@@ -478,13 +478,18 @@ Return files."
            (incf job-counter)
            (when (> job-counter parallel-jobs)
              (mmsg "Going into wait-for-child-to-exit%N")
-             (multiple-value-setq (wpid status child-died) (wait-for-child-to-exit jobs))
+             (multiple-value-setq (wpid status child-died)
+               (wait-for-child-to-exit jobs))
              (mmsg "Exited from wait-for-child-to-exit%N")
              (if (null child-died)
                  (if (and (numberp wpid) (>= wpid 0))
                      (let* ((pjob (gethash wpid jobs))
                             (finished-entries (pjob-entries pjob)))
                        (finished-some wpid pjob)
+                       (when (and (numberp status)
+                                  (not (zerop status)))
+                         (format *error-output* "wait returned for process ~d status ~d: exiting compile-system~%" wpid status)
+                         (core:exit 1))
                        (when reload (reload-some finished-entries))
                        (decf child-count))
                      (error "wait returned ~d  status ~d~%" wpid status))
@@ -536,10 +541,12 @@ Return files."
                              (core:hash-table-setf-gethash jobs pid one-pjob)
                              (incf child-count))))))))
            (when (> child-count 0) (go top)))))))
-                                                 
+
+(defun parallel-build-p ()
+  (and core:*use-parallel-build* (> *number-of-jobs* 1)))
 
 (defun compile-system (&rest args)
-  (let ((compile-function (if (and core:*use-parallel-build* (> *number-of-jobs* 1))
+  (let ((compile-function (if (parallel-build-p)
                               'compile-system-parallel
                               'compile-system-serial)))
     (format t "Compiling with ~a / core:*use-parallel-build* -> ~a  core:*number-of-jobs* -> ~a~%" compile-function core:*use-parallel-build* *number-of-jobs*)
@@ -640,11 +647,13 @@ Return files."
 
 
 (defun build-failure (condition)
-  (bformat t "\nBuild aborted.\n")
-  (bformat t "Received condition of type: %s\n%s\n"
+  (bformat *error-output* "\nBuild aborted.\n")
+  (bformat *error-output* "Received condition of type: %s\n%s\n"
            (type-of condition)
            condition)
-  (bformat t "Entering repl\n"))
+  (when (parallel-build-p)
+    (bformat *error-output* "About to exit clasp")
+    (core:exit 1)))
 
 (defun load-aclasp (&key clean
                       (system (command-line-arguments-as-list)))
@@ -782,7 +791,7 @@ Return files."
 (defun compile-cclasp* (output-file system)
   "Compile the cclasp source code."
   (let ((ensure-adjacent (select-source-files #P"src/lisp/kernel/cleavir/inline-prep" #P"src/lisp/kernel/cleavir/auto-compile" :system system)))
-    (or (= (length ensure-adjacent) 2) (error "src/lisp/kernel/inline-prep MUST immediately preceed src/lisp/kernel/auto-compile - currently the order is: ~a" ensure-adjacent)))
+    (or (= (length ensure-adjacent) 2) (error "src/lisp/kernel/inline-prep MUST immediately precede src/lisp/kernel/auto-compile - currently the order is: ~a" ensure-adjacent)))
   (let ((files #+(or)(append (out-of-date-bitcodes #P"src/lisp/kernel/tag/start" #P"src/lisp/kernel/cleavir/inline-prep" :system system)
                              (select-source-files #P"src/lisp/kernel/cleavir/auto-compile"
                                                   #P"src/lisp/kernel/tag/cclasp"
@@ -795,7 +804,7 @@ Return files."
     (setf core:*defun-inline-hook* nil)
     ;; Pull the inline.lisp and fli.lsp files forward because they take the longest to build
     ;; Only do this if we are doing a parallel build
-    (when (and core:*use-parallel-build* (> *number-of-jobs* 1))
+    (when (parallel-build-p)
       (setf files (maybe-move-to-front files #P"src/lisp/kernel/lsp/fli"))
       (setf files (maybe-move-to-front files #P"src/lisp/kernel/cleavir/inline")))
     (compile-system files :reload nil :file-order file-order :total-files (length system))
