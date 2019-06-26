@@ -379,21 +379,23 @@
 (defun group-by-type (forms env)
   (loop for form in forms
         for type = (form-type form env)
+        for sym = (gensym)
+        collect `(,sym ,form) into bindings
         if (subtypep type 'fixnum env)
-          collect form into fixnums
+          collect sym into fixnums
         else if (subtypep type 'single-float env)
-               collect form into single-floats
+               collect sym into single-floats
         else if (subtypep type 'double-float env)
-               collect form into double-floats
-        else collect form into unknowns
-        finally (return (values fixnums single-floats double-floats unknowns))))
+               collect sym into double-floats
+        else collect sym into unknowns
+        finally (return (values bindings fixnums single-floats double-floats unknowns))))
 
 ;; different from core:expand-assocative because it can have a list head,
-;; and returns NIL if given no forms, and doesn't put in THEs.
+;; errs on no forms, and doesn't put in THEs.
 ;; messy. FIXME
 (defun associate (head forms)
-  (cond ((null forms) nil)
-        ((null (rest forms)) (first forms))
+  (assert (not (null forms)))
+  (cond ((null (rest forms)) (first forms))
         (t `(,@head ,(first forms) ,(associate head (rest forms))))))
 
 ;; fixnum is hard since intermediate results can overflow to bignum.
@@ -403,16 +405,13 @@
          z
          (core:convert-overflow-result-to-bignum z))))
 (defun associate-fixnum-add (fixnums)
-  (cond ((null fixnums) nil)
-        ((null (rest fixnums)) (first fixnums))
+  (assert (not (null fixnums)))
+  (cond ((null (rest fixnums)) (first fixnums))
         ((null (cddr fixnums))
-         (let ((xg (gensym "FIXNUM-X")) (yg (gensym "FIXNUM-Y")))
-           `(let ((,xg ,(first fixnums)) (,yg ,(second fixnums)))
-              ,(gen-bin-fixnum-add xg yg))))
+         (gen-bin-fixnum-add (first fixnums) (second fixnums)))
         (t
-         (let ((left (gensym)) (right (gensym)) (xg (gensym)) (yg (gensym)))
-           `(let* ((,xg ,(first fixnums)) (,yg ,(second fixnums))
-                   (,left ,(gen-bin-fixnum-add xg yg))
+         (let ((left (gensym)) (right (gensym)))
+           `(let* ((,left ,(gen-bin-fixnum-add (first fixnums) (second fixnums)))
                    (,right ,(associate-fixnum-add (cddr fixnums))))
               (block nil
                 (tagbody
@@ -431,18 +430,45 @@
          (core:convert-overflow-result-to-bignum z))))
 
 (define-cleavir-compiler-macro + (&whole form &rest numbers &environment env)
-  (multiple-value-bind (fixnums single-floats double-floats unknowns)
+  (multiple-value-bind (bindings fixnums single-floats double-floats unknowns)
       (group-by-type numbers env)
-    (let* ((double-floatf
-             (associate '(cleavir-primop:float-add double-float) double-floats))
-           (double-floatsf (when double-floatf (list double-floatf)))
-           (single-floatf
-             (associate '(cleavir-primop:float-add single-float) single-floats))
-           (single-floatsf (when single-floatf (list single-floatf)))
-           (fixnumf (associate-fixnum-add fixnums))
-           (fixnumsf (when fixnumf (list fixnumf))))
-      (associate '(primop:inlined-two-arg-+)
-                 (append fixnumsf single-floatsf double-floatsf unknowns)))))
+    ;; If we have both double float and single float forms, the sum of the
+    ;; latter will be coerced.
+    (when (and single-floats double-floats)
+      (push `(cleavir-primop:coerce single-float double-float
+                                    ,(associate '(cleavir-primop:float-add single-float)
+                                                single-floats))
+            double-floats)
+      (setf single-floats nil))
+    `(let (,@bindings)
+       ,(cond
+          ((and fixnums (null single-floats) (null double-floats) (null unknowns))
+           ;; we only have fixnums
+           (associate-fixnum-add fixnums))
+          ((and single-floats (null fixnums) (null unknowns))
+           ;; only singles (if there were dobules, the earlier WHEN would have fired)
+           (associate '(cleavir-primop:float-add single-float) single-floats))
+          ((and double-floats (null fixnums) (null unknowns))
+           ;; only doubles
+           (associate '(cleavir-primop:float-add double-float) double-floats))
+          ((and (= (length fixnums) 1) (null single-floats) (null double-floats))
+           ;; a single fixnum and some unknowns - do a fixnum test
+           (let ((unknown-sum (associate '(primop:inlined-two-arg-+) unknowns))
+                 (us (gensym)))
+             `(let ((,us ,unknown-sum))
+                (if (cleavir-primop:typeq ,us fixnum)
+                    ,(gen-bin-fixnum-add (first fixnums) us)
+                    (core:two-arg-+ ,(first fixnums) ,us)))))
+          (t
+           ;; general case
+           (associate '(primop:inlined-two-arg-+)
+                      (append
+                       (when fixnums (list (associate-fixnum-add fixnums)))
+                       (when single-floats
+                         (list (associate '(cleavir-primop:float-add single-float) single-floats)))
+                       (when double-floats
+                         (list (associate '(cleavir-primop:float-add double-float) double-floats)))
+                       unknowns)))))))
 (define-cleavir-compiler-macro - (&whole form minuend &rest subtrahends)
   (if (core:proper-list-p subtrahends)
       (if subtrahends
