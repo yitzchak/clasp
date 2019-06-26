@@ -424,6 +424,12 @@
                  bignum
                    (return (core:two-arg-+ ,left ,right)))))))))
 
+(defun gen-bin-fixnum-sub (x y)
+  `(cleavir-primop:let-uninitialized (z)
+     (if (cleavir-primop:fixnum-sub ,x ,y z)
+         z
+         (core:convert-overflow-result-to-bignum z))))
+
 (define-cleavir-compiler-macro + (&whole form &rest numbers &environment env)
   (multiple-value-bind (fixnums single-floats double-floats unknowns)
       (group-by-type numbers env)
@@ -463,10 +469,22 @@
   (core:expand-compare form 'primop:inlined-two-arg-> numbers 'real))
 (define-cleavir-compiler-macro >= (&whole form &rest numbers)
   (core:expand-compare form 'primop:inlined-two-arg->= numbers 'real))
-(define-cleavir-compiler-macro 1+ (&whole form x)
-  `(primop:inlined-two-arg-+ ,x 1))
-(define-cleavir-compiler-macro 1- (&whole form x)
-  `(primop:inlined-two-arg-- ,x 1))
+(define-cleavir-compiler-macro 1+ (&whole form x &environment env)
+  (if (subtypep (form-type x env) 'fixnum env)
+      (gen-bin-fixnum-add x 1)
+      (let ((xg (gensym)))
+        `(let ((,xg ,x))
+           (if (cleavir-primop:typeq ,xg fixnum)
+               ,(gen-bin-fixnum-add xg 1)
+               (core:two-arg-+ ,xg 1))))))
+(define-cleavir-compiler-macro 1- (&whole form x &environment env)
+  (if (subtypep (form-type x env) 'fixnum env)
+      (gen-bin-fixnum-sub x 1)
+      (let ((xg (gensym)))
+        `(let ((,xg ,x))
+           (if (cleavir-primop:typeq ,xg fixnum)
+               ,(gen-bin-fixnum-sub xg 1)
+               (core:two-arg-- ,xg 1))))))
 
 (progn
   (debug-inline "plusp")
