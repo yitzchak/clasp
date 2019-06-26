@@ -153,7 +153,7 @@
                   (si::concatenate-into-vector
                    (sys:make-vector ',(if (eq element-type '*) t element-type)
                                     (+ ,@(loop for s in symlist
-                                               collect `(length ,s))))
+                                               collect `(the fixnum (length ,s)))))
                    ,@symlist))))))))
 
 ;;;
