@@ -898,6 +898,11 @@
   (etypecase fdesignator
     (function fdesignator)
     (symbol (fdefinition fdesignator))))
+(define-cleavir-compiler-macro core::coerce-fdesignator (&whole form fdesignator &environment env)
+  (let ((type (form-type fdesignator env)))
+    (cond ((subtypep type 'function env) fdesignator)
+          ((subtypep type 'symbol env) `(fdefinition ,fdesignator))
+          (t form))))
 
 ;;; ------------------------------------------------------------
 ;;;
