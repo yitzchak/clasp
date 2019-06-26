@@ -396,6 +396,34 @@
         ((null (rest forms)) (first forms))
         (t `(,@head ,(first forms) ,(associate head (rest forms))))))
 
+;; fixnum is hard since intermediate results can overflow to bignum.
+(defun gen-bin-fixnum-add (x y)
+  `(cleavir-primop:let-uninitialized (z)
+     (if (cleavir-primop:fixnum-add ,x ,y z)
+         z
+         (core:convert-overflow-result-to-bignum z))))
+(defun associate-fixnum-add (fixnums)
+  (cond ((null fixnums) nil)
+        ((null (rest fixnums)) (first fixnums))
+        ((null (cddr fixnums))
+         (let ((xg (gensym "FIXNUM-X")) (yg (gensym "FIXNUM-Y")))
+           `(let ((,xg ,(first fixnums)) (,yg ,(second fixnums)))
+              ,(gen-bin-fixnum-add xg yg))))
+        (t
+         (let ((left (gensym)) (right (gensym)) (xg (gensym)) (yg (gensym)))
+           `(let* ((,xg ,(first fixnums)) (,yg ,(second fixnums))
+                   (,left ,(gen-bin-fixnum-add xg yg))
+                   (,right ,(associate-fixnum-add (cddr fixnums))))
+              (block nil
+                (tagbody
+                   (if (cleavir-primop:typeq ,left fixnum)
+                       (if (cleavir-primop:typeq ,right fixnum)
+                           (return ,(gen-bin-fixnum-add left right))
+                           (go bignum))
+                       (go bignum))
+                 bignum
+                   (return (core:two-arg-+ ,left ,right)))))))))
+
 (define-cleavir-compiler-macro + (&whole form &rest numbers &environment env)
   (multiple-value-bind (fixnums single-floats double-floats unknowns)
       (group-by-type numbers env)
@@ -405,20 +433,8 @@
            (single-floatf
              (associate '(cleavir-primop:float-add single-float) single-floats))
            (single-floatsf (when single-floatf (list single-floatf)))
-           ;; fixnum is hard since intermediate results can overflow to bignum. FIXME.
-           ;; so we only do anything special when there are one or two fixnums.
-           (fixnumsf
-             (cond ((null fixnums) nil)
-                   ((null (rest fixnums)) (list (first fixnums)))
-                   ((null (cddr fixnums))
-                    (let ((xs (gensym "FIXNUM-X")) (ys (gensym "FIXNUM-Y")))
-                      (list
-                       `(let ((,xs ,(first fixnums)) (,ys ,(second fixnums)))
-                          (cleavir-primop:let-uninitialized (z)
-                            (if (cleavir-primop:fixnum-add ,xs ,ys z)
-                                z
-                                (core:convert-overflow-result-to-bignum z)))))))
-                   (t fixnums))))
+           (fixnumf (associate-fixnum-add fixnums))
+           (fixnumsf (when fixnumf (list fixnumf))))
       (associate '(primop:inlined-two-arg-+)
                  (append fixnumsf single-floatsf double-floatsf unknowns)))))
 (define-cleavir-compiler-macro - (&whole form minuend &rest subtrahends)
