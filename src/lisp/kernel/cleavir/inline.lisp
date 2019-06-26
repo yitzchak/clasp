@@ -376,12 +376,55 @@
   (defcomparison primop:inlined-two-arg->=
     cleavir-primop:fixnum-not-less    cleavir-primop:float-not-less    core:two-arg->=))
 
-(define-cleavir-compiler-macro + (&whole form &rest numbers)
-  (core:expand-associative '+ 'primop:inlined-two-arg-+ numbers 0))
+(defun group-by-type (forms env)
+  (loop for form in forms
+        for type = (form-type form env)
+        if (subtypep type 'fixnum env)
+          collect form into fixnums
+        else if (subtypep type 'single-float env)
+               collect form into single-floats
+        else if (subtypep type 'double-float env)
+               collect form into double-floats
+        else collect form into unknowns
+        finally (return (values fixnums single-floats double-floats unknowns))))
+
+;; different from core:expand-assocative because it can have a list head,
+;; and returns NIL if given no forms, and doesn't put in THEs.
+;; messy. FIXME
+(defun associate (head forms)
+  (cond ((null forms) nil)
+        ((null (rest forms)) (first forms))
+        (t `(,@head ,(first forms) ,(associate head (rest forms))))))
+
+(define-cleavir-compiler-macro + (&whole form &rest numbers &environment env)
+  (multiple-value-bind (fixnums single-floats double-floats unknowns)
+      (group-by-type numbers env)
+    (let* ((double-floatf
+             (associate '(cleavir-primop:float-add double-float) double-floats))
+           (double-floatsf (when double-floatf (list double-floatf)))
+           (single-floatf
+             (associate '(cleavir-primop:float-add single-float) single-floats))
+           (single-floatsf (when single-floatf (list single-floatf)))
+           ;; fixnum is hard since intermediate results can overflow to bignum. FIXME.
+           ;; so we only do anything special when there are one or two fixnums.
+           (fixnumsf
+             (cond ((null fixnums) nil)
+                   ((null (rest fixnums)) (list (first fixnums)))
+                   ((null (cddr fixnums))
+                    (let ((xs (gensym "FIXNUM-X")) (ys (gensym "FIXNUM-Y")))
+                      (list
+                       `(let ((,xs ,(first fixnums)) (,ys ,(second fixnums)))
+                          (cleavir-primop:let-uninitialized (z)
+                            (if (cleavir-primop:fixnum-add ,xs ,ys z)
+                                z
+                                (core:convert-overflow-result-to-bignum z)))))))
+                   (t fixnums))))
+      (associate '(primop:inlined-two-arg-+)
+                 (append fixnumsf single-floatsf double-floatsf unknowns)))))
 (define-cleavir-compiler-macro - (&whole form minuend &rest subtrahends)
   (if (core:proper-list-p subtrahends)
       (if subtrahends
-          `(primop:inlined-two-arg-- ,minuend ,(core:expand-associative '+ 'primop:inlined-two-arg-+ subtrahends 0))
+          `(primop:inlined-two-arg-- ,minuend (+ ,@subtrahends))
           `(core:negate ,minuend))
       (error "The - operator can not be part of a form that is a dotted list.")))
 (define-cleavir-compiler-macro * (&whole form &rest numbers)
