@@ -84,8 +84,8 @@
 
 ;; if one item can be compared by EQ (e.g., is a constant symbol) we can use EQ.
 (define-cleavir-compiler-macro eql (&whole form x y &environment env)
-  (if (or (subtypep (form-type x env) '(not eq-incomparable))
-          (subtypep (form-type y env) '(not eq-incomparable)))
+  (if (or (subtypep (form-type x env) '(not eq-incomparable) env)
+          (subtypep (form-type y env) '(not eq-incomparable) env))
       `(eq ,x ,y)
       form))
 
@@ -193,6 +193,13 @@
             nil
             (error 'type-error :datum x :expected-type 'list)))))
 
+(define-cleavir-compiler-macro car (&whole whole list &environment env)
+  (let ((ltype (form-type list env)))
+    (cond ((subtypep ltype 'cons)
+           `(cleavir-primop:car ,list))
+          ;; could do null, but how often is that explicit?
+          (t whole))))
+
 (progn
   (debug-inline "cdr")
   (declaim (inline cl:cdr))
@@ -202,6 +209,12 @@
         (if (null x)
             nil
             (error 'type-error :datum x :expected-type 'list)))))
+
+(define-cleavir-compiler-macro cdr (&whole whole list &environment env)
+  (let ((ltype (form-type list env)))
+    (cond ((subtypep ltype 'cons)
+           `(cleavir-primop:cdr ,list))
+          (t whole))))
 
 (defmacro defcr (name &rest ops)
   `(progn
@@ -265,6 +278,14 @@
           (cleavir-primop:rplaca p v)
           p)
         (error 'type-error :datum p :expected-type 'cons))))
+
+(define-cleavir-compiler-macro rplaca (&whole form cons value &environment env)
+  (if (subtypep (form-type cons env) 'cons env)
+      (let ((v (gensym "VALUE")))
+        `(let ((,v ,value))
+           (cleavir-primop:rplaca ,cons ,v)
+           ,v))
+      form))
 
 (progn
   (declaim (inline cl:rplacd))
