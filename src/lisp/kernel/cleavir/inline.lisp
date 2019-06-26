@@ -42,6 +42,28 @@
        (return-from ,(core:function-block-name name) ,(second lambda-list)))
      ,@body))
 
+(defun form-type (form env)
+  (if (constantp form env)
+      `(eql ,(ext:constant-form-value form env))
+      (typecase form
+        (symbol
+         (let ((info (cleavir-env:variable-info env form)))
+           (if info
+               (cleavir-env:type info)
+               't)))
+        (cons
+         (case (first form)
+           ((the)
+            (let* ((type (second form))
+                   (typee (core::expand-deftype type)))
+              (if (and (consp typee) (eq (first typee) 'values))
+                  't ; give up. FIXME?
+                  typee)))
+           ;; could check ftype returns
+           (t 't)))
+        ;; actually caught by the constantp
+        (t `(eql ,form)))))
+
 (progn
   (debug-inline "eq")
   (declaim (inline cl:eq))
@@ -59,6 +81,13 @@
                (core:eql-underlying x y)
                nil))
           (t nil))))
+
+;; if one item can be compared by EQ (e.g., is a constant symbol) we can use EQ.
+(define-cleavir-compiler-macro eql (&whole form x y &environment env)
+  (if (or (subtypep (form-type x env) '(not eq-incomparable))
+          (subtypep (form-type y env) '(not eq-incomparable)))
+      `(eq ,x ,y)
+      form))
 
 #+(or)
 (progn
