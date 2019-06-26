@@ -89,59 +89,6 @@
       `(eq ,x ,y)
       form))
 
-#+(or)
-(progn
-  ;; Really want a bit-vector-equal intrinsic here.
-  ;; Maybe even separate simple and not vectors.
-  
-  (defmacro type2case (x y fail &rest cases)
-    (let ((sx (gensym "X")) (sy (gensym "Y")))
-      `(let ((,sx ,x) (,sy ,y))
-         (cond ,@(loop for (type . body) in cases
-                       collect `((typep ,sx ',type)
-                                 (if (typep ,sy ',type)
-                                     (progn ,@body)
-                                     ,fail))
-                       collect `((typep ,sy ',type) ,fail))
-               (t ,fail)))))
-  
-  (defun equal (x y)
-    (or (eql x y)
-        (type2case x y nil
-                   (cons (and (equal (car x) (car y))
-                              (equal (cdr x) (cdr y))))
-                   (string (string= x y))
-                   (bit-vector (bit-vector-equal x y))
-                   (pathname (pathname-equal x y)))))
-  
-  (defun hash-table-equalp (x y)
-    (and (eq (hash-table-count x) (hash-table-count y))
-         (eq (hash-table-test x) (hash-table-test y))
-         ;; since the number of entries is the same,
-         ;; we don't need to check for extra keys in y.
-         (maphash (lambda (k v)
-                    (multiple-value-bind (otherv present)
-                        (gethash k y)
-                      (unless present
-                        (return-from hash-table-equalp nil))
-                      (unless (equalp v otherv)
-                        (return-from hash-table-equalp nil))))
-                  x)
-         t))
-  
-  (defun equalp (x y)
-    (or (eq x y)
-        (type2case x y nil
-                   (character (char-equal x y))
-                   (number (= x y))
-                   (cons (and (equalp (car x) (car y))
-                              (equalp (cdr x) (cdr y))))
-                   (array (array-equalp x y))
-                   (structure-object (structure-equalp x y))
-                   (hash-table (hash-table-equalp x y))
-                   (pathname (pathname-equal x y)))))
-  )
-
 (progn
   (debug-inline "not")
   (declaim (inline cl:not))
