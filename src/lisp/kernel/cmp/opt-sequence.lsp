@@ -58,8 +58,9 @@
            ;; We should just have a local function, but as of July 2017 we do very
            ;; badly at eliminating unneeded closures.
            (macrolet ((,caller (fun)
-                        (list 'funcall fun ,@(mapcar (lambda (s i) `'(si::seq-iterator-ref ,s ,i))
-                                                     seqs iters))))
+                        (list 'funcall (list 'the 'function fun)
+                              ,@(mapcar (lambda (s i) `'(si::seq-iterator-ref ,s ,i))
+                                        seqs iters))))
              (tagbody ,@body))
            #+(or)
            (flet ((,caller (fun)
@@ -163,6 +164,7 @@
     (function sequence &rest more-sequences)
   (let* ((fun (gensym "FUNCTION")))
     `(let ((,fun (si::coerce-fdesignator ,function)))
+       (declare (type function ,fun))
        (do-static-sequences (call ,sequence ,@more-sequences)
          (call ,fun))
        nil)))
@@ -189,6 +191,7 @@
                                      ',result-type
                                      (min ,@(mapcar (lambda (s) `(length ,s)) seqs))))
                            (,output-iter (si::make-seq-iterator ,output)))
+                      (declare (type function ,fun))
                       (do-static-sequences (call ,@seqs)
                         (si::seq-iterator-set ,output ,output-iter (call ,fun))
                         (setq ,output-iter (si::seq-iterator-next ,output ,output-iter)))
@@ -229,6 +232,7 @@
     `(let ((,output ,result)
            (,fun (si::coerce-fdesignator ,function))
            ,@(mapcar #'list seqs sequences))
+       (declare (type function ,fun))
        (if (and (vectorp ,output) (array-has-fill-pointer-p ,output))
            (map-into-fp ,output ,fun ,@seqs)
            (map-into-usual ,output ,fun ,@seqs))
