@@ -54,11 +54,8 @@
 (define-compiler-macro /= (&whole form &rest numbers)
   (core:expand-uncompare form 'core:two-arg-= numbers 'number))
 
-(define-compiler-macro 1+ (x)
-  `(core:two-arg-+ ,x 1))
-
-(define-compiler-macro 1- (x)
-  `(core:two-arg-- ,x 1))
+(define-compiler-macro 1+ (x) `(+ ,x 1))
+(define-compiler-macro 1- (x) `(+ ,x -1))
 
 ;;; byte operations: look for calls like (foo ... (byte ...) ...)
 
