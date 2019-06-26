@@ -72,11 +72,12 @@
 
 (defmacro with-array-data (((vectorname vector) indexname) &body body)
   `(let ((,vectorname ,vector) (,indexname 0))
+     (declare (type fixnum ,indexname))
      (cond ((core:data-vector-p ,vectorname))
            ((arrayp ,vectorname)
             (tagbody loop
                (setq ,indexname
-                     (+ ,indexname (%displaced-index-offset ,vectorname))
+                     (+ ,indexname (the fixnum (%displaced-index-offset ,vectorname)))
                      ,vectorname (%displacement ,vectorname))
                (if (core:data-vector-p ,vectorname) (go done) (go loop))
              done))
@@ -94,9 +95,10 @@
   (with-unique-names (%vector %index %limit)
     (once-only (sequence)
       `(with-array-data ((,%vector ,sequence) ,%index)
-         (do ((,%limit (+ ,%index (length ,sequence)))
+         (do ((,%limit (+ ,%index (the fixnum (length ,sequence))))
               (,%index ,%index (1+ ,%index)))
              ((= ,%index ,%limit) ,result)
+           (declare (type fixnum ,%limit))
            (let ((,elt (core:vref ,%vector ,%index)))
              ,@body))))))
 

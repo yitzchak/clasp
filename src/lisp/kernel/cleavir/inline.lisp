@@ -582,6 +582,7 @@
   (if (typep vector 'simple-vector)
       (if (typep index 'fixnum)
           (let ((ats (core::vector-length vector)))
+            (declare (type fixnum index ats))
             (if (and (<= 0 index) (< index ats))
                 (cleavir-primop:aref vector index t t t)
                 (error "Invalid index ~d for vector of length ~d" index ats)))
@@ -593,6 +594,7 @@
   (if (typep vector 'simple-vector)
       (if (typep index 'fixnum)
           (let ((ats (core::vector-length vector)))
+            (declare (type fixnum index ats))
             (if (and (<= 0 index) (< index ats))
                 (progn (cleavir-primop:aset vector index value t t t)
                        value)
@@ -681,21 +683,24 @@
 ;;; aref allows access further than the fill pointer
 (declaim (inline vector-in-bounds-p))
 (defun vector-in-bounds-p (vector index)
+  (declare (type fixnum index))
   (etypecase vector
     ((simple-array * (*))
-     (and (<= 0 index) (< index (core::vector-length vector))))
+     (and (<= 0 index) (< index (the fixnum (core::vector-length vector)))))
     (array
-     (and (<= 0 index) (< index (if (array-has-fill-pointer-p vector)
-                                    (min (core::%array-total-size vector) (fill-pointer vector))
-                                    (core::%array-total-size vector)))))))
+     (and (<= 0 index) (< index (the fixnum
+                                     (if (array-has-fill-pointer-p vector)
+                                         (min (core::%array-total-size vector) (fill-pointer vector))
+                                         (core::%array-total-size vector))))))))
 
 (declaim (inline row-major-array-in-bounds-p))
 (defun row-major-array-in-bounds-p (array index)
+  (declare (type fixnum index))
   (etypecase array
     ((simple-array * (*))
-     (and (<= 0 index) (< index (core::vector-length array))))
+     (and (<= 0 index) (< index (the fixnum (core::vector-length array)))))
     (array
-     (and (<= 0 index) (< index (core::%array-total-size array))))))
+     (and (<= 0 index) (< index (the fixnum (core::%array-total-size array)))))))
 
 ;;; Array indices are all fixnums. If we're sure sizes are valid, we don't want
 ;;; to use general arithmetic. We can just use this to do unsafe modular arithmetic.
@@ -729,21 +734,22 @@
   ;; of the index, meaning it could potentially be
   ;; moved out of loops, though that can invite inconsistency
   ;; in a multithreaded environment.
-    (unless (vector-in-bounds-p vector index)
-      ;; From elt: Should signal an error of type type-error if index is not a valid sequence index for sequence.
-      (etypecase vector
-        ((simple-array * (*))
-         (let ((max (core::vector-length vector)))
-           (error 'core:array-out-of-bounds :datum index
-                                            :expected-type `(integer 0 (,max))
-                                            :array vector)))
-        (array
-         (let ((max (core::%array-total-size vector)))
-           (when (array-has-fill-pointer-p vector)
-             (setq max (min max (fill-pointer vector))))
-           (error 'core:array-out-of-bounds :datum index
-                                            :expected-type `(integer 0 (,max))
-                                            :array vector)))))
+  (check-type index fixnum)
+  (unless (vector-in-bounds-p vector index)
+    ;; From elt: Should signal an error of type type-error if index is not a valid sequence index for sequence.
+    (etypecase vector
+      ((simple-array * (*))
+       (let ((max (core::vector-length vector)))
+         (error 'core:array-out-of-bounds :datum index
+                                          :expected-type `(integer 0 (,max))
+                                          :array vector)))
+      (array
+       (let ((max (core::%array-total-size vector)))
+         (when (array-has-fill-pointer-p vector)
+           (setq max (min max (fill-pointer vector))))
+         (error 'core:array-out-of-bounds :datum index
+                                          :expected-type `(integer 0 (,max))
+                                          :array vector)))))
   (with-array-data (underlying-array offset vector)
     ;; Okay, now array is a vector/simple, and index is valid.
     ;; This function takes care of element type discrimination.
@@ -772,6 +778,7 @@
 (declaim (inline cl:row-major-aref))
 (defun cl:row-major-aref (array index)
   ;; Bounds check. Use the original arguments.
+  (check-type index fixnum)
   (unless (row-major-array-in-bounds-p array index)
     (let ((max (etypecase array
                  ((simple-array * (*)) (core::vector-length array))
@@ -788,6 +795,7 @@
 
 (declaim (inline core:row-major-aset))
 (defun core:row-major-aset (array index value)
+  (check-type index fixnum)
   (unless (row-major-array-in-bounds-p array index)
     (let ((max (etypecase array
                  ((simple-array * (*)) (core::vector-length array))
@@ -947,7 +955,7 @@
                 (error 'type-error :datum sequence :expected-type 'cons)
                 (let ((cell (nthcdr index sequence)))
                   (if (consp cell)
-                      (setf (car cell) new-value)
+                      (setf (car (the cons cell)) new-value)
                       (if cell
                         ;;; we expect a proper list
                           (error 'type-error :datum sequence :expected-type 'list)
@@ -995,43 +1003,6 @@
   (index-column (posn-index posn stream) stream))
 
 (in-package #:clasp-cleavir)
-;;; --------------------------------------------------
-;;;
-;;; Provided by bike  May 21, 2017
-;;;
-
-;;; should be moved to non-cleavir-specific land.
-;;; Seems to be slower. Probably would be an improvement
-;;; if the called function was inlined as well.
-#+(or)
-(progn
-  (defun mapfoo-macro (iter accum function lists)
-    ;; nothing cleavir-specific here
-    (let ((sfunction (gensym "MAPCAR-FUNCTION"))
-          (syms (loop repeat (length lists)
-                      collect (gensym "MAPCAR-ARGUMENT"))))
-      `(loop named ,(gensym "UNUSED-BLOCK")
-             ;; the loop needs a (gensym) name so that ,function
-             ;; can't refer to it.
-             with ,sfunction = ,function
-             ,@(loop for sym in syms
-                     for list in lists
-                     append `(for ,sym ,iter ,list))
-             ,accum (funcall ,sfunction ,@syms))))
-
-  (define-compiler-macro mapc (function list &rest more-lists)
-    (mapfoo-macro 'in 'do function (cons list more-lists)))
-  (define-compiler-macro mapcar (function list &rest more-lists)
-    (mapfoo-macro 'in 'collect function (cons list more-lists)))
-  (define-compiler-macro mapcan (function list &rest more-lists)
-    (mapfoo-macro 'in 'nconc function (cons list more-lists)))
-  (define-compiler-macro mapl (function list &rest more-lists)
-    (mapfoo-macro 'on 'do function (cons list more-lists)))
-  (define-compiler-macro maplist (function list &rest more-lists)
-    (mapfoo-macro 'on 'collect function (cons list more-lists)))
-  (define-compiler-macro mapcon (function list &rest more-lists)
-    (mapfoo-macro 'on 'nconc function (cons list more-lists)))
-  )
 
 ;;; If FORM is of the form #'valid-function-name, return valid-function-name.
 ;;; FIXME?: Give up on expansion and warn if it's invalid?
