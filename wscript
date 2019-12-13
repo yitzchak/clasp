@@ -291,7 +291,7 @@ def update_dependencies(cfg):
                        "b8a05a3846430bc36c8200f24d248c8293801503")
     fetch_git_revision("src/lisp/modules/asdf",
                        "https://gitlab.common-lisp.net/drmeister/asdf.git",
-                       label = "master", revision = "3.3.3.3")
+                       label = "master") # , revision = "3.3.3.3")
     os.system("(cd src/lisp/modules/asdf; ${MAKE-make} --quiet)")
 
 # run this from a completely cold system with:
