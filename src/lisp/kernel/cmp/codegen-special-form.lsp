@@ -38,6 +38,8 @@
     (core::%array-dimension codegen-%array-dimension convert-%array-dimension)
     (cleavir-primop:car codegen-car convert-car)
     (cleavir-primop:cdr codegen-cdr convert-cdr)
+    (core::cas-car codegen-cas-car convert-cas-car)
+    (core::cas-cdr codegen-cas-cdr convert-cas-cdr)
     (cleavir-primop:funcall codegen-primop-funcall convert-primop-funcall)
     (cleavir-primop:unreachable codegen-unreachable convert-unreachable)
     (core:vaslist-pop codegen-vaslist-pop convert-vaslist-pop)
@@ -997,6 +999,42 @@ jump to blocks within this tagbody."
                     (gen-memref-address
                      (irc-load cons-alloca)
                      (- +cons-cdr-offset+ +cons-tag+)))
+                   result)))
+
+;;; CORE:CAS-CAR, CORE:CAS-CDR
+
+(defun codegen-cas-car (result rest env)
+  (let ((cons-form (first rest))
+        (old-form (second rest))
+        (new-form (third rest))
+        (cons-alloca (alloca-t* "cons"))
+        (old-alloca (alloca-t* "old"))
+        (new-alloca (alloca-t* "new")))
+    (codegen cons-alloca cons-form env)
+    (codegen old-alloca old-form env)
+    (codegen new-alloca new-form env)
+    (irc-t*-result (irc-cmpxchg
+                    (gen-memref-address
+                     (irc-load cons-alloca)
+                     (- +cons-car-offset+ +cons-tag+))
+                    (irc-load old-alloca) (irc-load new-alloca))
+                   result)))
+
+(defun codegen-cas-cdr (result rest env)
+  (let ((cons-form (first rest))
+        (old-form (second rest))
+        (new-form (third rest))
+        (cons-alloca (alloca-t* "cons"))
+        (old-alloca (alloca-t* "old"))
+        (new-alloca (alloca-t* "new")))
+    (codegen cons-alloca cons-form env)
+    (codegen old-alloca old-form env)
+    (codegen new-alloca new-form env)
+    (irc-t*-result (irc-cmpxchg
+                    (gen-memref-address
+                     (irc-load cons-alloca)
+                     (- +cons-cdr-offset+ +cons-tag+))
+                    (irc-load old-alloca) (irc-load new-alloca))
                    result)))
 
 ;;; CLEAVIR-PRIMOP:FUNCALL
