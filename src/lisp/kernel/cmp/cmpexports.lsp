@@ -188,6 +188,7 @@
             irc-icmp-slt
             irc-intrinsic
             irc-load
+            irc-load-atomic
             irc-low-level-trace
             irc-phi
             irc-personality-function
@@ -197,6 +198,7 @@
             irc-ret
             irc-undef-value-get
             irc-store
+            irc-store-atomic
             irc-struct-gep
             irc-read-slot
             irc-write-slot

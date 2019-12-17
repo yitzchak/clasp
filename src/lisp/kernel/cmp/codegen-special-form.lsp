@@ -942,7 +942,7 @@ jump to blocks within this tagbody."
            (irc-gep-variable cast (list (jit-constant-i32 0)
                                         (jit-constant-i32 +simple-vector-length-slot+))
                              "vector-length-address"))
-         (untagged-length (irc-load length-address "vector-length")))
+         (untagged-length (irc-load-atomic length-address "vector-length")))
     (irc-tag-fixnum untagged-length "vector-length")))
 
 (defun codegen-vector-length (result rest env)
@@ -983,18 +983,20 @@ jump to blocks within this tagbody."
   (let ((cons-form (first rest))
         (cons-alloca (alloca-t* "cons")))
     (codegen cons-alloca cons-form env)
-    (irc-t*-result (irc-load (gen-memref-address
-                              (irc-load cons-alloca)
-                              (- +cons-car-offset+ +cons-tag+)))
+    (irc-t*-result (irc-load-atomic
+                    (gen-memref-address
+                     (irc-load cons-alloca)
+                     (- +cons-car-offset+ +cons-tag+)))
                    result)))
 
 (defun codegen-cdr (result rest env)
   (let ((cons-form (first rest))
         (cons-alloca (alloca-t* "cons")))
     (codegen cons-alloca cons-form env)
-    (irc-t*-result (irc-load (gen-memref-address
-                              (irc-load cons-alloca)
-                              (- +cons-cdr-offset+ +cons-tag+)))
+    (irc-t*-result (irc-load-atomic
+                    (gen-memref-address
+                     (irc-load cons-alloca)
+                     (- +cons-cdr-offset+ +cons-tag+)))
                    result)))
 
 ;;; CLEAVIR-PRIMOP:FUNCALL

@@ -501,12 +501,12 @@ representing a tagged fixnum."
 (defun irc-read-slot (instance index)
   "Read a value from the rack of an instance"
   (let ((dataN* (irc-instance-slot-address instance index)))
-    (irc-load dataN*)))
+    (irc-load-atomic dataN*)))
 
 (defun irc-write-slot (instance index value)
   "Write a value into the rack of an instance"
   (let ((dataN* (irc-instance-slot-address instance index)))
-    (irc-store value dataN*)
+    (irc-store-atomic value dataN*)
     value))
 
 (defun irc-value-frame-parent (renv)
@@ -555,21 +555,21 @@ representing a tagged fixnum."
 ;;;
 
 (defun irc-real-array-displacement (tarray)
-  (irc-load (c++-field-ptr info.%mdarray% tarray :data) "real-array-displacement"))
+  (irc-load-atomic (c++-field-ptr info.%mdarray% tarray :data) "real-array-displacement"))
 
 (defun irc-real-array-index-offset (tarray)
-  (irc-load (c++-field-ptr info.%mdarray% tarray :displaced-index-offset) "real-array-displaced-index"))
+  (irc-load-atomic (c++-field-ptr info.%mdarray% tarray :displaced-index-offset) "real-array-displaced-index"))
 
 (defun irc-array-total-size (tarray)
-  (irc-load (c++-field-ptr info.%mdarray% tarray :array-total-size) "array-total-size"))
+  (irc-load-atomic (c++-field-ptr info.%mdarray% tarray :array-total-size) "array-total-size"))
 
 (defun irc-array-rank (tarray)
-  (irc-load (c++-field-ptr info.%mdarray% tarray :rank) "array-rank"))
+  (irc-load-atomic (c++-field-ptr info.%mdarray% tarray :rank) "array-rank"))
 
 (defun irc-array-dimension (tarray axis)
   (let* ((dims (c++-field-ptr info.%mdarray% tarray :dimensions))
          (axisN* (irc-gep dims (list 0 axis))))
-    (irc-load axisN*)))
+    (irc-load-atomic axisN*)))
 
 (defun irc-header-stamp (object)
   (let* ((object* (irc-untag-general object))
@@ -676,6 +676,14 @@ Otherwise do a variable shift."
 (defun irc-load (source &optional (label ""))
   (llvm-sys:create-load-value-twine *irbuilder* source label))
 
+(defun irc-load-atomic (source &optional (label ""))
+  (let ((inst (irc-load source label)))
+    (llvm-sys:set-atomic inst
+                         ;; these should be reasonable defaults.
+                         'llvm-sys:sequentially-consistent
+                         1 #+(or)'llvm-sys:system)
+    inst))
+
 (defun irc-store (val destination &optional (label "") (is-volatile nil))
   ;; Mismatch in store type sis a very common bug we hit when rewriting codegen.
   ;; LLVM doesn't deal with it gracefully except with a debug build, so we just
@@ -695,6 +703,13 @@ Otherwise do a variable shift."
            (error "BUG: Mismatch in irc-store involving the val type ~a and destination type ~a -
 the type LLVMContexts don't match - so they were defined in different threads!"
                   val-type dest-contained-type)))))
+
+(defun irc-store-atomic (val destination &optional (label "") (is-volatile nil))
+  (let ((inst (irc-store val destination label is-volatile)))
+    (llvm-sys:set-atomic inst
+                         'llvm-sys:sequentially-consistent
+                         1 #+(or)'llvm-sys:system)
+    inst))
 
 (defun irc-phi (return-type num-reserved-values &optional (label "phi"))
   (llvm-sys:create-phi *irbuilder* return-type num-reserved-values label))
