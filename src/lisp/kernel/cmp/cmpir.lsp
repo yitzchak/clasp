@@ -676,11 +676,19 @@ Otherwise do a variable shift."
 (defun irc-load (source &optional (label ""))
   (llvm-sys:create-load-value-twine *irbuilder* source label))
 
+;;; About atomic ordering. I'm going with what I understand to be the Java
+;;; memory model - to oversimplify, other than locks, access to data
+;;; structures is pretty unsychronized across threads. UNORDERED is even
+;;; weaker than std::memory_order_relaxed in C++ - it doesn't guarantee that
+;;; the order in which writes are seen to occur is the same across threads.
+;;; This is enough that behavior is defined, but will be pretty confusing
+;;; without synchronization (through locks, CAS, whatever) which I think is
+;;; reasonable. And fast.
+
 (defun irc-load-atomic (source &optional (label ""))
   (let ((inst (irc-load source label)))
     (llvm-sys:set-atomic inst
-                         ;; these should be reasonable defaults.
-                         'llvm-sys:sequentially-consistent
+                         'llvm-sys:unordered
                          1 #+(or)'llvm-sys:system)
     inst))
 
@@ -707,7 +715,7 @@ the type LLVMContexts don't match - so they were defined in different threads!"
 (defun irc-store-atomic (val destination &optional (label "") (is-volatile nil))
   (let ((inst (irc-store val destination label is-volatile)))
     (llvm-sys:set-atomic inst
-                         'llvm-sys:sequentially-consistent
+                         'llvm-sys:unordered
                          1 #+(or)'llvm-sys:system)
     inst))
 
