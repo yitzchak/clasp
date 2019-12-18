@@ -1,4 +1,4 @@
-(in-package "EXT")
+(in-package "MP")
 
 (defun cas-expander (symbol)
   (core:get-sysprop symbol 'cas-method))
