@@ -85,6 +85,15 @@
 ;;; Particular CAS expansions
 ;;;
 
+(define-cas-expander the (type place &environment env)
+  (multiple-value-bind (vars vals old new cas read)
+      (get-cas-expansion place env)
+    (values vars vals old new
+            `(let ((,old (the ,type ,old))
+                   (,new (the ,type ,new)))
+               ,cas)
+            `(the ,type ,read))))
+
 (define-cas-expander car (cons)
   (let ((old (gensym "OLD")) (new (gensym "NEW"))
         (ctemp (gensym "CONS")))
@@ -93,7 +102,7 @@
               (if (consp ,ctemp)
                   ,ctemp
                   (error 'type-error :datum ,ctemp :expected-type 'cons))
-              old new)
+              ,old ,new)
             `(car ,ctemp))))
 
 (define-cas-expander cdr (cons)
@@ -104,5 +113,5 @@
               (if (consp ,ctemp)
                   ,ctemp
                   (error 'type-error :datum ,ctemp :expected-type 'cons))
-              old new)
+              ,old ,new)
             `(car ,ctemp))))
