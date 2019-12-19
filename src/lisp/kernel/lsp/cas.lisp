@@ -6,6 +6,28 @@
   (core:put-sysprop symbol 'cas-method expander))
 
 (defmacro cas (place old new &environment env)
+  "(CAS place old new)
+Atomically store NEW in PLACE if OLD matches the current value of PLACE.
+Matching is as if by EQL.
+Returns the previous value of PLACE; if it's EQL to OLD the swap happened.
+
+Only the swap is atomic. Evaluation of PLACE's subforms, OLD, and NEW is
+not guaranteed to be in any sense atomic with the swap, and likely won't be.
+
+PLACE must be a CAS-able place. CAS-able places are either symbol macros,
+or accessor forms with a CAR of
+CAR, CDR, FIRST, REST, SLOT-VALUE, CLOS:SLOT-VALUE-USING-CLASS,
+CLOS:STANDARD-INSTANCE-ACCESS,
+
+or one defined with DEFINE-CAS-EXPANDER.
+
+Some CAS accessors have additional semantic constraints.
+You can see their documentation with e.g. (documentation 'slot-value 'mp:cas)
+
+This is planned to be expanded to include SVREF, SYMBOL-VALUE, variables,
+possibly other simple vectors, and slot accessors.
+
+Experimental."
   (multiple-value-bind (temps values oldvar newvar cas read)
       (get-cas-expansion place env)
     (declare (ignore read))
@@ -29,6 +51,15 @@
   `(atomic-update ,place #'(lambda (y x) (- x y)) ,delta))
 
 (defun get-cas-expansion (place &optional env)
+  "Analogous to GET-SETF-EXPANSION. Returns the following six values:
+
+* list of temporary variables, which will be bound as if by LET*
+* list of forms, whose results will be bound to the variables
+* variable for the old value of PLACE
+* variable for the new value of PLACE
+* A form to perform the swap, which can refer to the temporary variables
+   and the variables for the old and new values
+* A form to read a value from PLACE, which can refer to the temporary variables"
   (etypecase place
     (symbol
      (multiple-value-bind (expansion expanded)
@@ -88,12 +119,33 @@
             `(funcall #',cas-op ,old ,new ,@temps)
             `(,op ,@temps))))
 
-(defmacro define-cas-expander (name lambda-list &body body
+(defmacro define-cas-expander (accessor lambda-list &body body
                                &environment env)
+  "Analogous to DEFINE-SETF-EXPANDER, defines a CAS expander for ACCESSOR.
+The body must return the six values for GET-CAS-EXPANSION.
+
+It is up to you the definer to ensure the swap is performed atomically.
+This means you will almost certainly need Clasp's synchronization operators
+(e.g., CAS on some other place)."
   `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (setf (cas-expander ',name)
-           ,(ext:parse-macro name lambda-list body env))
-     ',name))
+     (setf (cas-expander ',accessor)
+           ,(ext:parse-macro accessor lambda-list body env))
+     ',accessor))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Documentation support
+;;;
+
+(defmethod documentation ((object symbol) (doc-type (eql 'cas)))
+  (let ((exp (cas-expander object)))
+    (when exp (documentation exp t))))
+
+(defmethod (setf documentation) (new (object symbol) (doc-type (eql 'cas)))
+  (let ((exp (cas-expander object)))
+    (if exp
+        (setf (documentation exp t) new)
+        new)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -101,6 +153,7 @@
 ;;;
 
 (define-cas-expander the (type place &environment env)
+  "(cas (the y x) o n) = (cas x (the y o) (the y n))"
   (multiple-value-bind (vars vals old new cas read)
       (get-cas-expansion place env)
     (values vars vals old new
@@ -141,6 +194,11 @@
   (get-cas-expansion `(cdr ,cons) env))
 
 (define-cas-expander clos:standard-instance-access (instance location)
+  "The requirements of the normal STANDARD-INSTANCE-ACCESS writer
+must be met, including that the slot has allocation :instance, and is
+bound before the operation.
+If there is a CHANGE-CLASS concurrent with this operation the
+consequences are not defined."
   (let ((old (gensym "OLD")) (new (gensym "NEW"))
         (itemp (gensym "INSTANCE")) (ltemp (gensym "LOCATION")))
     (values (list itemp ltemp) (list instance location) old new
@@ -166,6 +224,11 @@
   (error "Cannot modify slots of object with built-in-class"))
 
 (define-cas-expander clos:slot-value-using-class (class instance slotd)
+  "Same requirements as STANDARD-INSTANCE-ACCESS, except the slot can
+have allocation :class.
+Also, methods on SLOT-VALUE-USING-CLASS, SLOT-BOUNDP-USING-CLASS, and
+(SETF SLOT-VALUE-USING-CLASS) are ignored (not invoked).
+In the future, this may be customizable with a generic function."
   (default-cas-expansion-aux
    'clos:slot-value-using-class 'cas-slot-value-using-class
    (list class instance slotd)))
@@ -180,16 +243,20 @@
         (let ((location (gethash slot-name location-table)))
           (if location
               (core::instance-cas object location old new)
-              (slot-missing class object slot-name
-                            'cas (list old new))))
+              (values (slot-missing class object slot-name
+                                    'cas (list old new)))))
         (let ((slotd (find slot-name (clos:class-slots class)
                            :key #'clos:slot-definition-name)))
           (if slotd
               (cas (clos:slot-value-using-class class object slotd)
                    old new)
-              (slot-missing class object slot-name
-                            'cas (list old new)))))))
+              (values (slot-missing class object slot-name
+                                    'cas (list old new))))))))
 
 (define-cas-expander slot-value (object slot-name)
+  "See SLOT-VALUE-USING-CLASS documentation for constraints.
+If no slot with the given SLOT-NAME exists, SLOT-MISSING will be called,
+with operation = mp:cas, and new-value a list of OLD and NEW.
+If SLOT-MISSING returns, its primary value is returned."
   (default-cas-expansion-aux
    'slot-value 'cas-slot-value (list object slot-name)))
