@@ -22,6 +22,12 @@
              until (eq ,old (setf ,old ,cas))
              finally (return ,new)))))
 
+(defmacro atomic-incf (place &optional (delta 1))
+  `(atomic-update ,place #'+ ,delta))
+
+(defmacro atomic-decf (place &optional (delta 1))
+  `(atomic-update ,place #'(lambda (y x) (- x y)) ,delta))
+
 (defun get-cas-expansion (place &optional env)
   (etypecase place
     (symbol
