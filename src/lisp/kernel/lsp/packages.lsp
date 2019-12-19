@@ -125,6 +125,7 @@
             get-cas-expansion
             ;; atomic operations
             atomic-update
+            atomic-incf atomic-decf
             ))
   (core:select-package "CORE"))
 
