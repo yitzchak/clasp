@@ -122,7 +122,7 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (export '(;; compare and swap
             cas
-            get-cas-expansion
+            get-cas-expansion define-cas-expander
             ;; atomic operations
             atomic-update
             atomic-incf atomic-decf
