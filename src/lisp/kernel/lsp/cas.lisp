@@ -130,3 +130,10 @@
             old new
             `(core::cas-cdr ,ctemp2 ,old ,new)
             `(car ,ctemp))))
+
+(define-cas-expander clos:standard-instance-access (instance location)
+  (let ((old (gensym "OLD")) (new (gensym "NEW"))
+        (itemp (gensym "INSTANCE")) (ltemp (gensym "LOCATION")))
+    (values (list itemp ltemp) (list instance location) old new
+            `(core::instance-cas ,itemp ,ltemp ,old ,new)
+            `(core:instance-ref ,itemp ,ltemp))))
