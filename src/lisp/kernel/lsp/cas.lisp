@@ -131,6 +131,11 @@
             `(core::cas-cdr ,ctemp2 ,old ,new)
             `(car ,ctemp))))
 
+(define-cas-expander first (cons &environment env)
+  (get-cas-expansion `(car ,cons) env))
+(define-cas-expander rest (cons &environment env)
+  (get-cas-expansion `(cdr ,cons) env))
+
 (define-cas-expander clos:standard-instance-access (instance location)
   (let ((old (gensym "OLD")) (new (gensym "NEW"))
         (itemp (gensym "INSTANCE")) (ltemp (gensym "LOCATION")))
