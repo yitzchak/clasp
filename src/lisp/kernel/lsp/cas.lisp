@@ -107,22 +107,26 @@
 
 (define-cas-expander car (cons)
   (let ((old (gensym "OLD")) (new (gensym "NEW"))
-        (ctemp (gensym "CONS")))
-    (values (list ctemp) (list cons) old new
-            `(core::cas-car
-              (if (consp ,ctemp)
-                  ,ctemp
-                  (error 'type-error :datum ,ctemp :expected-type 'cons))
-              ,old ,new)
+        (ctemp (gensym "CONS")) (ctemp2 (gensym "CHECKED-CONS")))
+    (values (list ctemp ctemp2)
+            ;; We type check ahead of time so we don't have to do it on every
+            ;; iteration in ATOMIC-UPDATE and suchlike.
+            (list cons `(if (consp ,ctemp)
+                            ,ctemp
+                            (error 'type-error :datum ,ctemp
+                                   :expected-type 'cons)))
+            old new
+            `(core::cas-car ,ctemp2 ,old ,new)
             `(car ,ctemp))))
 
 (define-cas-expander cdr (cons)
   (let ((old (gensym "OLD")) (new (gensym "NEW"))
-        (ctemp (gensym "CONS")))
-    (values (list ctemp) (list cons) old new
-            `(core::cas-cdr
-              (if (consp ,ctemp)
-                  ,ctemp
-                  (error 'type-error :datum ,ctemp :expected-type 'cons))
-              ,old ,new)
+        (ctemp (gensym "CONS")) (ctemp2 (gensym "CHECKED-CONS")))
+    (values (list ctemp ctemp2)
+            (list cons `(if (consp ,ctemp)
+                            ,ctemp
+                            (error 'type-error :datum ,ctemp
+                                               :expected-type 'cons)))
+            old new
+            `(core::cas-cdr ,ctemp2 ,old ,new)
             `(car ,ctemp))))
