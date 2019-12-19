@@ -347,67 +347,76 @@ q (or Q):             quits the inspection.~%~
 #+clasp(fmakunbound '(setf documentation))
 
 (defgeneric documentation (object doc-type))
-(defgeneric (setf documentation) (new-value object doc-type))
+(defgeneric (setf documentation) (new-value object doc-type)
+  (:argument-precedence-order object doc-type new-value))
+
+(defmethod documentation (object doc-type)
+  (warn "Unsupported DOCUMENTATION for object ~a, doc-type ~a"
+        object doc-type)
+  nil)
+
+(defmethod (setf documentation) (new object doc-type)
+  (declare (ignore object doc-type))
+  new)
 
 (defmethod documentation ((object symbol) doc-type)
-  (when (member doc-type +valid-documentation-types+)
-    (case doc-type
-      (type
-       (let ((c (find-class object nil)))
-         (if c
-             (documentation c t)
-             (if (ext:type-expander object)
-                 (documentation (ext:type-expander object) t)
-                 nil))))
-      (function
-       (if (fboundp object)
-           (documentation (or (macro-function object)
-                              (fdefinition object))
-                          doc-type)
-           nil))
-      (compiler-macro
-       (if (compiler-macro-function object)
-           (documentation (compiler-macro-function object) t)
-           nil))
-      (setf
-       (if (ext:setf-expander object)
-           (documentation (ext:setf-expander object) t)
-           nil))
-      (otherwise
-       (si::get-documentation object doc-type)))))
+  (si::get-documentation object doc-type))
 
-(defmethod (setf documentation) (new-value (object symbol) doc-type)
-  (when (member doc-type +valid-documentation-types+)
-    (case doc-type
-      (type
-       (let ((c (find-class object nil)))
-         (if c
-             (progn
-               (si::set-documentation object 'type nil)
-               (si::set-documentation object 'structure nil)
-               (setf (documentation c t) new-value))
-             (let ((exp (ext:type-expander object)))
-               (if exp
-                   (setf (documentation exp t) new-value)
-                   (si::set-documentation object doc-type new-value))))))
-      (function
-       (when (fboundp object)
-         (setf (documentation (or (macro-function object)
-                                  (fdefinition object))
-                              doc-type)
-               new-value)))
-      (compiler-macro
-       (when (compiler-macro-function object)
-         (setf (documentation (compiler-macro-function object)
-                              t)
-               new-value)))
-      (setf
-       (let ((exp (ext:setf-expander object)))
-         (when exp
-           (setf (documentation exp t) new-value))))
-      (otherwise
-       (si::set-documentation object doc-type new-value))))
-  new-value)
+(defmethod documentation ((object symbol) (doc-type (eql 'type)))
+  (let ((c (find-class object nil)))
+    (if c
+        (documentation c t)
+        (if (ext:type-expander object)
+            (documentation (ext:type-expander object) t)
+            nil))))
+
+(defmethod documentation ((object symbol) (doc-type (eql 'function)))
+  (if (fboundp object)
+      (documentation (or (macro-function object)
+                         (fdefinition object))
+                     doc-type)
+      nil))
+
+(defmethod documentation ((object symbol) (doc-type (eql 'compiler-macro)))
+  (if (compiler-macro-function object)
+      (documentation (compiler-macro-function object) t)
+      nil))
+
+(defmethod documentation ((object symbol) (doc-type (eql 'setf)))
+  (if (ext:setf-expander object)
+      (documentation (ext:setf-expander object) t)
+      nil))
+
+(defmethod (setf documentation) (new (object symbol) (dt (eql 'type)))
+  (let ((c (find-class object nil)))
+    (if c
+        (progn
+          (si::set-documentation object 'type nil)
+          (si::set-documentation object 'structure nil)
+          (setf (documentation c t) new))
+        (let ((exp (ext:type-expander object)))
+          (if exp
+              (setf (documentation exp t) new)
+              (si::set-documentation object dt new))))))
+
+(defmethod (setf documentation) (new (object symbol) (dt (eql 'function)))
+  (if (fboundp object)
+      (setf (documentation (or (macro-function object)
+                               (fdefinition object))
+                           dt)
+            new)
+      new))
+
+(defmethod (setf documentation) (new (object symbol) (dt (eql 'compiler-macro)))
+  (if (compiler-macro-function object)
+      (setf (documentation (compiler-macro-function object) t) new)
+      new))
+
+(defmethod (setf documentation) (new (object symbol) (dt (eql 'setf)))
+  (let ((exp (ext:setf-expander object)))
+    (if exp
+        (setf (documentation exp t) new)
+        new)))
 
 (defmethod documentation ((object package) doc-type)
   (when (member doc-type '(t package))
