@@ -77,11 +77,15 @@
   (declare (ignore env))
   (error "~a is not a supported place to CAS" place)
   #+(or)
-  (let* ((op (car place)) (args (cdr place))
-         (temps (loop for form in args collect (gensym)))
-         (new (gensym "NEW")) (old (gensym "OLD")))
+  (let ((op (car place)) (args (cdr place)))
+    (default-cas-expansion-aux op `(cas ,op) args)))
+
+;;; used below because i'm lazy
+(defun default-cas-expansion-aux (op cas-op args)
+  (let ((temps (loop for form in args collect (gensym)))
+        (new (gensym "NEW")) (old (gensym "OLD")))
     (values temps args old new
-            `(funcall #'(cas ,op) ,@temps)
+            `(funcall #',cas-op ,old ,new ,@temps)
             `(,op ,@temps))))
 
 (defmacro define-cas-expander (name lambda-list &body body
@@ -142,3 +146,50 @@
     (values (list itemp ltemp) (list instance location) old new
             `(core::instance-cas ,itemp ,ltemp ,old ,new)
             `(core:instance-ref ,itemp ,ltemp))))
+
+;;; FIXME: (cas slot-value-using-class) would be a better name
+;;; and make the define-cas-expander unnecessary.
+;;; And we could expose it for customization.
+(defgeneric cas-slot-value-using-class (old new class object slotd)
+  (:argument-precedence-order class object slotd old new))
+
+(defmethod cas-slot-value-using-class
+    (old new
+     (class core:std-class) object
+     (slotd clos:standard-effective-slot-definition))
+  (let ((loc (clos:slot-definition-location slotd)))
+    (ecase (clos:slot-definition-allocation slotd)
+      ((:instance) (core::instance-cas object loc old new))
+      ((:class) (core::cas-car loc old new)))))
+(defmethod cas-slot-value-using-class
+    (old new (class built-in-class) object slotd)
+  (error "Cannot modify slots of object with built-in-class"))
+
+(define-cas-expander clos:slot-value-using-class (class instance slotd)
+  (default-cas-expansion-aux
+   'clos:slot-value-using-class 'cas-slot-value-using-class
+   (list class instance slotd)))
+
+;;; Largely copied from slot-value.
+;;; FIXME: Ditto above comment about CAS functions.
+;;; FIXME: It would be nice to define these in CLOS, actually.
+(defun cas-slot-value (old new object slot-name)
+  (let* ((class (class-of object))
+         (location-table (clos::class-location-table class)))
+    (if location-table
+        (let ((location (gethash slot-name location-table)))
+          (if location
+              (core::instance-cas object location old new)
+              (slot-missing class object slot-name
+                            'cas (list old new))))
+        (let ((slotd (find slot-name (clos:class-slots class)
+                           :key #'clos:slot-definition-name)))
+          (if slotd
+              (cas (clos:slot-value-using-class class object slotd)
+                   old new)
+              (slot-missing class object slot-name
+                            'cas (list old new)))))))
+
+(define-cas-expander slot-value (object slot-name)
+  (default-cas-expansion-aux
+   'slot-value 'cas-slot-value (list object slot-name)))
