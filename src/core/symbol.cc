@@ -66,11 +66,20 @@ CL_DEFUN_SETF List_sp core__set_symbol_plist(List_sp plist, Symbol_sp sym) {
   return plist;
 }
 
+CL_LISPIFY_NAME("core:cas-symbol-plist");
+CL_LAMBDA(sym cmp_plist new_plist);
+CL_DECLARE();
+CL_DOCSTRING("Compare-and-swap the symbol plist");
+CL_DEFUN List_sp core__cas_symbol_plist(Symbol_sp sym,
+                                        List_sp cmp_plist, List_sp new_plist) {
+  return sym->cas_plist(cmp_plist, new_plist);
+}
+
 CL_LAMBDA(sym indicator &optional default);
 CL_DECLARE();
 CL_DOCSTRING("Return the value of a plist property");
 CL_DEFUN T_sp cl__get(Symbol_sp sym, T_sp indicator, T_sp defval) {
-  return cl__getf(sym->_PropertyList, indicator, defval);
+  return cl__getf(sym->plist(), indicator, defval);
 }
 
 CL_LISPIFY_NAME("cl:get")
@@ -79,7 +88,7 @@ CL_DECLARE();
 CL_DOCSTRING("Set the value of a plist property");
 CL_DEFUN_SETF T_sp core__putprop(T_sp val, Symbol_sp sym, T_sp indicator, T_sp defval) {
   (void)(defval); // unused
-  sym->_PropertyList = core__put_f(sym->_PropertyList, val, indicator);
+  sym->setf_plist(core__put_f(sym->plist(), val, indicator));
   return val;
 }
 
@@ -292,10 +301,6 @@ __attribute__((optnone)) void Symbol_O::symbolUnboundError() const {
   UNBOUND_VARIABLE_ERROR(this->asSmartPtr());
 }
 
-void Symbol_O::setf_plist(List_sp plist) {
-  this->_PropertyList = plist;
-}
-
 void Symbol_O::sxhash_(HashGenerator &hg) const {
   if (hg.isFilling()) this->_HomePackage.load().unsafe_general()->sxhash_(hg);
   if (hg.isFilling()) this->_Name->sxhash_(hg);
@@ -316,7 +321,7 @@ CL_DEFMETHOD Symbol_sp Symbol_O::copy_symbol(T_sp copy_properties) const {
     if (this->boundP())
       new_symbol->_GlobalValue = this->symbolValue();
     new_symbol->setReadOnly(this->getReadOnly());
-    new_symbol->_PropertyList = cl__copy_list(this->_PropertyList);
+    new_symbol->setf_plist(cl__copy_list(this->plist()));
     if (this->fboundp()) new_symbol->_Function = this->_Function;
     else new_symbol->fmakunbound();
     if (this->fboundp_setf()) new_symbol->_SetfFunction = this->_SetfFunction;
@@ -554,8 +559,8 @@ void Symbol_O::dump() {
     ss << "IsSpecial: " << this->specialP() << std::endl;
     ss << "IsConstant: " << this->getReadOnly() << std::endl;
     ss << "PropertyList: ";
-    if (this->_PropertyList) {
-      ss << _rep_(this->_PropertyList) << std::endl;
+    if (this->plist()) {
+      ss << _rep_(this->plist()) << std::endl;
     } else {
       ss << "UNDEFINED" << std::endl;
     }

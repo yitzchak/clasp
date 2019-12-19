@@ -32,6 +32,7 @@ THE SOFTWARE.
 #include <string>
 #include <vector>
 #include <set>
+#include <atomic>
 #include <clasp/core/object.h>
 #include <clasp/core/cons.h>
 #include <clasp/core/array.h>
@@ -65,7 +66,7 @@ public:
   Function_sp _SetfFunction;
   mutable std::atomic<uint32_t> _BindingIdx;
   uint32_t  _Flags;
-  List_sp   _PropertyList;
+  std::atomic<T_sp> _PropertyList;
 
 private:
   friend class Instance_O;
@@ -132,8 +133,18 @@ public:
   T_sp find_class();
   ClassHolder_sp find_class_holder();
 #endif
-  List_sp plist() const { return this->_PropertyList; };
-  void setf_plist(List_sp plist);
+  List_sp plist() const {
+    return gc::As_unsafe<List_sp>(this->_PropertyList.load(std::memory_order_relaxed));
+  }
+  void setf_plist(List_sp plist) {
+    this->_PropertyList.store(plist, std::memory_order_relaxed);
+  }
+  List_sp cas_plist(List_sp cmp, List_sp new_plist) {
+    T_sp tcmp = cmp;
+    T_sp tnew_plist = new_plist;
+    this->_PropertyList.compare_exchange_strong(tcmp, tnew_plist);
+    return gc::As_unsafe<List_sp>(tcmp);
+  }
   
   bool getReadOnly() const { return !!(this->_Flags&IS_CONSTANT);};
   void setReadOnly(bool m) {
