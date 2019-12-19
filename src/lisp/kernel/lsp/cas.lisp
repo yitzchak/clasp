@@ -31,7 +31,11 @@
 (defun get-cas-expansion (place &optional env)
   (etypecase place
     (symbol
-     (error "CAS on symbols not supported yet")
+     (multiple-value-bind (expansion expanded)
+         (macroexpand-1 place env)
+       (if expanded
+           (get-cas-expansion expansion env)
+           (error "CAS on variables not supported yet")))
      #+(or)
      (let ((info (cleavir-env:variable-info env place)))
        (etypecase info
@@ -52,6 +56,7 @@
                  (get-cas-expansion expansion env)
                  (default-cas-expansion place env))))))))
 
+#+(or)
 (defun lexical-cas-expansion (var &optional env)
   ;; So: For a regular local, cas is meaningless.
   ;; We can reasonably say it succeeds, i.e.
@@ -70,7 +75,7 @@
 
 (defun default-cas-expansion (place &optional env)
   (declare (ignore env))
-  (error "(CAS x) functions not yet supported")
+  (error "~a is not a supported place to CAS" place)
   #+(or)
   (let* ((op (car place)) (args (cdr place))
          (temps (loop for form in args collect (gensym)))
