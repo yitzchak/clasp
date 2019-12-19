@@ -126,7 +126,9 @@ The body must return the six values for GET-CAS-EXPANSION.
 
 It is up to you the definer to ensure the swap is performed atomically.
 This means you will almost certainly need Clasp's synchronization operators
-(e.g., CAS on some other place)."
+(e.g., CAS on some other place).
+
+Docstrings are accessible with doc-type MP:CAS."
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (setf (cas-expander ',accessor)
            ,(ext:parse-macro accessor lambda-list body env))
