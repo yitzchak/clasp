@@ -16,15 +16,15 @@ not guaranteed to be in any sense atomic with the swap, and likely won't be.
 
 PLACE must be a CAS-able place. CAS-able places are either symbol macros,
 or accessor forms with a CAR of
-CAR, CDR, FIRST, REST, SLOT-VALUE, CLOS:SLOT-VALUE-USING-CLASS,
-CLOS:STANDARD-INSTANCE-ACCESS,
+CAR, CDR, FIRST, REST, SVREF,
+SLOT-VALUE, CLOS:SLOT-VALUE-USING-CLASS, CLOS:STANDARD-INSTANCE-ACCESS,
 
 or one defined with DEFINE-CAS-EXPANDER.
 
 Some CAS accessors have additional semantic constraints.
 You can see their documentation with e.g. (documentation 'slot-value 'mp:cas)
 
-This is planned to be expanded to include SVREF, SYMBOL-VALUE, variables,
+This is planned to be expanded to include SYMBOL-VALUE, variables,
 possibly other simple vectors, and slot accessors.
 
 Experimental."
@@ -194,6 +194,20 @@ Docstrings are accessible with doc-type MP:CAS."
   (get-cas-expansion `(car ,cons) env))
 (define-cas-expander rest (cons &environment env)
   (get-cas-expansion `(cdr ,cons) env))
+
+(define-cas-expander svref (vector index)
+  (let ((old (gensym "OLD")) (new (gensym "NEW"))
+        (itemp (gensym "INDEX"))
+        (vtemp1 (gensym "VECTOR")) (vtemp2 (gensym "VECTOR")))
+    (values (list vtemp1 itemp vtemp2)
+            (list vector index
+                  `(if (simple-vector-p ,vtemp1)
+                       ,vtemp1
+                       (error 'type-error :datum ,vtemp1
+                                          :expected-type 'simple-vector)))
+            old new
+            `(core::acas ,vtemp2 ,itemp ,old ,new t t t)
+            `(cleavir-primop:aref ,vtemp2 ,itemp t t t))))
 
 (define-cas-expander clos:standard-instance-access (instance location)
   "The requirements of the normal STANDARD-INSTANCE-ACCESS writer
