@@ -16,7 +16,7 @@ not guaranteed to be in any sense atomic with the swap, and likely won't be.
 
 PLACE must be a CAS-able place. CAS-able places are either symbol macros,
 or accessor forms with a CAR of
-CAR, CDR, FIRST, REST, SVREF,
+CAR, CDR, FIRST, REST, SVREF, SYMBOL-PLIST,
 SLOT-VALUE, CLOS:SLOT-VALUE-USING-CLASS, CLOS:STANDARD-INSTANCE-ACCESS,
 
 or one defined with DEFINE-CAS-EXPANDER.
@@ -207,7 +207,16 @@ Docstrings are accessible with doc-type MP:CAS."
                                           :expected-type 'simple-vector)))
             old new
             `(core::acas ,vtemp2 ,itemp ,old ,new t t t)
-            `(cleavir-primop:aref ,vtemp2 ,itemp t t t))))
+            ;; FIXME:
+            ;; :: is a hack so that the bclasp reader doesn't complain.
+            `(cleavir-primop::aref ,vtemp2 ,itemp t t t))))
+
+(define-cas-expander symbol-plist (symbol)
+  (let ((old (gensym "OLD")) (new (gensym "NEW"))
+        (stemp (gensym "SYMBOL")))
+    (values (list stemp) (list symbol) old new
+            `(core:cas-symbol-plist ,stemp ,old ,new)
+            `(symbol-plist ,stemp))))
 
 (define-cas-expander clos:standard-instance-access (instance location)
   "The requirements of the normal STANDARD-INSTANCE-ACCESS writer
