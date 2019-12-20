@@ -62,8 +62,8 @@ public:
   SimpleString_sp _Name;
   std::atomic<T_sp> _HomePackage; // NIL or Package
   T_sp _GlobalValue;
-  Function_sp _Function;
-  Function_sp _SetfFunction;
+  std::atomic<T_sp> _Function;
+  std::atomic<T_sp> _SetfFunction;
   mutable std::atomic<uint32_t> _BindingIdx;
   uint32_t  _Flags;
   std::atomic<T_sp> _PropertyList;
@@ -211,8 +211,12 @@ public:
 
   void fmakunbound();
   
-  void setSetfFdefinition(Function_sp fn) { this->_SetfFunction = fn; };
-  inline Function_sp getSetfFdefinition() { return this->_SetfFunction; };
+  void setSetfFdefinition(Function_sp fn) {
+    this->_SetfFunction.store(fn, std::memory_order_relaxed);
+  }
+  inline Function_sp getSetfFdefinition() const {
+    return gc::As_unsafe<Function_sp>(this->_SetfFunction.load(std::memory_order_relaxed));
+  }
   bool fboundp_setf() const;
   void fmakunbound_setf();
   
@@ -221,7 +225,9 @@ public:
   void setf_symbolFunction(Function_sp exec);
 
   /*! Return the global bound function */
-  inline Function_sp symbolFunction() const { return this->_Function; };
+  inline Function_sp symbolFunction() const {
+    return gc::As_unsafe<Function_sp>(this->_Function.load(std::memory_order_relaxed));
+  }
 
   /*! Return true if the symbol has a function bound*/
   bool fboundp() const;

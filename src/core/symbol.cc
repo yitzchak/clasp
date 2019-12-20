@@ -205,8 +205,8 @@ Symbol_O::Symbol_O(bool dummy) : _HomePackage(_Nil<T_O>()),
                                  _Class(_Nil<T_O>()),
 #endif
                                  _GlobalValue(_Unbound<T_O>()),
-                                 _Function(_Unbound<Function_O>()),
-                                 _SetfFunction(_Unbound<Function_O>()),
+                                 _Function(_Unbound<T_O>()),
+                                 _SetfFunction(_Unbound<T_O>()),
                                  _BindingIdx(NO_THREAD_LOCAL_BINDINGS),
                                  _Flags(0),
                                  _PropertyList(_Nil<List_V>()) {};
@@ -279,21 +279,21 @@ CL_DEFUN Symbol_sp cl__makunbound(Symbol_sp functionName) {
 }
 
 bool Symbol_O::fboundp() const {
-  return this->_Function->entry.load() != unboundFunctionEntryPoint;
+  return this->symbolFunction()->entry.load() != unboundFunctionEntryPoint;
 };
 
 void Symbol_O::fmakunbound()
 {
-  this->_Function = make_unbound_symbol_function(this->asSmartPtr());
+  this->setf_symbolFunction(make_unbound_symbol_function(this->asSmartPtr()));
 }
 
 bool Symbol_O::fboundp_setf() const {
-  return this->_SetfFunction->entry.load() != unboundSetfFunctionEntryPoint;
+  return this->getSetfFdefinition()->entry.load() != unboundSetfFunctionEntryPoint;
 };
 
 void Symbol_O::fmakunbound_setf()
 {
-  this->_SetfFunction = make_unbound_setf_symbol_function(this->asSmartPtr());
+  this->setSetfFdefinition(make_unbound_setf_symbol_function(this->asSmartPtr()));
 }
 
 
@@ -322,9 +322,11 @@ CL_DEFMETHOD Symbol_sp Symbol_O::copy_symbol(T_sp copy_properties) const {
       new_symbol->_GlobalValue = this->symbolValue();
     new_symbol->setReadOnly(this->getReadOnly());
     new_symbol->setf_plist(cl__copy_list(this->plist()));
-    if (this->fboundp()) new_symbol->_Function = this->_Function;
+    if (this->fboundp())
+      new_symbol->setf_symbolFunction(this->symbolFunction());
     else new_symbol->fmakunbound();
-    if (this->fboundp_setf()) new_symbol->_SetfFunction = this->_SetfFunction;
+    if (this->fboundp_setf())
+      new_symbol->setSetfFdefinition(this->getSetfFdefinition());
     else new_symbol->fmakunbound_setf();
   }
   return new_symbol;
@@ -424,7 +426,7 @@ T_sp Symbol_O::defparameter(T_sp val) {
 
 CL_LISPIFY_NAME("core:setf_symbolFunction");
 CL_DEFMETHOD void Symbol_O::setf_symbolFunction(Function_sp exec) {
-  this->_Function = exec;
+  this->_Function.store(exec, std::memory_order_relaxed);
 }
 
 string Symbol_O::symbolNameAsString() const {
@@ -552,7 +554,7 @@ void Symbol_O::dump() {
       ss << "Value: " << _rep_(val) << std::endl;
     }
     if (this->fboundp()) {
-      ss << "Function: " << _rep_(this->_Function) << std::endl;
+      ss << "Function: " << _rep_(this->symbolFunction()) << std::endl;
     } else {
       ss << "Function: UNBOUND" << std::endl;
     }
