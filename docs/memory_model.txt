@@ -23,7 +23,7 @@ Structure objects: Slot access is unordered.
 Standard instances (including conditions): Access to slots of allocation :class or :instance is unordered, otherwise it's up to the programmer. CLASS-NAME counts as slot access, i.e. is unordered.
 Symbols: SYMBOL-VALUE and special variable access in general are not atomic, but will often be thread local (see above except I haven't written that part). FDEFINITION and SYMBOL-FUNCTION access the same place, and are unordered(*1). MACRO-FUNCTION that ends up with the global environment uses the same place and is unordered(*1), and with local macros is constant. Switching a symbol from being a function being a macro (or the opposite) makes them not atomic, though. FIND-CLASS is not atomic(*2). SYMBOL-PLIST is unordered(*1). COMPILER-MACRO-FUNCTION is unordered(*3). Lexical variable access (which can be concurrent for closed-over variables) is unordered.
 DOCUMENTATION, READTABLE-CASE, LOGICAL-PATHNAME-TRANSLATIONS: Not atomic.
-Macro places, custom setf expansions, and THE, LDB, MASK-FIELD, GETF, and APPLY places are as atomic as their underlying places, but remember the note above about subform evaluation.
+Macro places, custom setf expansions, and THE, LDB, MASK-FIELD, GETF, and APPLY places are as atomic as their underlying places, but remember the note above about subform evaluation, and that it's the write that's atomic, not the read and write as a combined operation.
 
 Some operations work with values in ways that are not explicitly available to SETF, but are similar to accessing a place.
 
