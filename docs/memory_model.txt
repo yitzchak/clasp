@@ -1,0 +1,41 @@
+Clasp's memory model (i.e. its rules on how concurrent accesses to places work) is based on that of LLVM's, which is in turn based on those of Java and C++. For full formality, check those standards.
+
+Two accesses to a place are _concurrent_ if, essentially, they could potentially happen simultaneously. Two accesses in the same thread, or in different threads but with exclusion using the same lock, are not concurrent.
+
+Two reads being concurrent is not a problem, but two accesses to a place _conflict_ if at least one is a write. Accesses in which this results in undefined behavior are _not atomic_. All of the below forms of access - unordered, monotonic, and sequentially consistent - are _atomic_.
+
+Note that in this context "atomic" does not mean lock-free.
+
+Clasp defines some accesses as _unordered_ (LLVM terminology). This is the minimum guarantee of atomicity. This means that conflicts are not a problem, and that any value read is a value something wrote there. There is however no guarantee of synchronization, so for example if one thread writes a place and another reads the same place, the reader thread may see the written value, or may see whatever it was before the write.
+
+Some accesses are _monotonic_ (LLVM terminology), or what C++ calls "relaxed". This means that all accesses to a place occur in some total order global between threads, and furthermore if a thread waits long enough, a read to a place written by another thread will eventually see the value of that write (or a later write).
+
+Some accesses are _sequentially consistent_ in addition to being monotonic. This is a much stronger condition: all sequentially consistent accesses to all places take place in some global total order.
+
+Some places are _compound_, in that accessing them involves accessing two or more other places. Compound places include VALUES, SUBSEQ, and some user defined places. For compound places, access is not atomic, but access to the underlying places may still be. For example, if one thread evaluates (setf (values p1 p2) (values a1 a2)), and another evaluates (setf (values p1 p2) (values b1 b2)), and p1 and p2 can both be accessed atomically, a read taking place after both writes may see (values a1 a2), (values b1 b2), (values a1 b2), or (values b1 a2).
+
+"Normal" accesses to a non-compound place, that is reading through the read operator and writing through SETF, are generally either not atomic or unordered. In general Clasp tries to guarantee unordered access at minimum (but uh, doesn't succeed very well, yet).
+
+Conses: CAR, CDR, FIRST, and REST are unordered. Accesses farther in a list (e.g. SECOND, CAAR, NTH, ELT) are also unordered, but there is no guarantee that obtaining the cons to be modified is done atomically with the access.
+Arrays: AREF (or SVREF, CHAR, SCHAR, ROW-MAJOR-AREF) of one-dimensional simple arrays ought to be unordered, unless the upgraded element type is an integer type smaller than (unsigned-byte 8) or (signed-byte 8). But right now it isn't since we go through C++ functions whoops. Other accesses to arrays are not atomic.
+Hash tables: If the hash table was made with :thread-safe t, all accesses are unordered, otherwise they are not atomic.
+Structure objects: Slot access is unordered.
+Standard instances (including conditions): Access to slots of allocation :class or :instance is unordered, otherwise it's up to the programmer. CLASS-NAME counts as slot access, i.e. is unordered.
+Symbols: SYMBOL-VALUE and special variable access in general are not atomic, but will often be thread local (see above except I haven't written that part). FDEFINITION and SYMBOL-FUNCTION access the same place, and are unordered(*1). MACRO-FUNCTION that ends up with the global environment uses the same place and is unordered(*1), and with local macros is constant. Switching a symbol from being a function being a macro (or the opposite) makes them not atomic, though. FIND-CLASS is not atomic(*2). SYMBOL-PLIST is unordered(*1). COMPILER-MACRO-FUNCTION is unordered(*3). Lexical variable access (which can be concurrent for closed-over variables) is unordered.
+DOCUMENTATION, READTABLE-CASE, LOGICAL-PATHNAME-TRANSLATIONS: Not atomic.
+Macro places, custom setf expansions, and THE, LDB, MASK-FIELD, GETF, and APPLY places are as atomic as their underlying places, but remember the note above about subform evaluation.
+
+Some operations work with values in ways that are not explicitly available to SETF, but are similar to accessing a place.
+
+CLOS defining forms like DEFMETHOD are probably not atomic.
+Funcallable standard instances: SET-FUNCALLABLE-INSTANCE-FUNCTION writes to an implicit place unorderedly. Calling the instance implicitly reads this place unorderedly.
+Symbols: DEFINE-SYMBOL-MACRO writes to an implicit global-symbol-macro place, which can be read by MACROEXPAND(-1): not atomic. PROCLAIM (and DECLAIM) can write global type, ftype, special-ness, inline, and declaration-ness, and these are read by the compiler and evaluator among other places: not atomic. DEFPARAMETER and DEFVAR also write the special-ness place. DEFTYPE writes a global type expander, as read by TYPEP etc.: unordered (*3). DEFCONSTANT writes an implicit global-constant-p place read by the evaluator etc.: not atomic. DEFSETF and DEFINE-SETF-EXPANDER write a symbol's setf-expander, read by GET-SETF-EXPANSION: unordered (*3). DEFINE-METHOD-COMBINATION writes a symbol's method-combination, read by generic function machinery: unordered (*3). DEFSTRUCT may write a global structure information place: not atomic. MAKE-PACKAGE, DEFPACKAGE etc. write global package information, as read by FIND-PACKAGE etc.: unordered.
+Global optimization level, as altered by PROCLAIM or DECLAIM, is not atomic.
+
+Some operations access places implicitly. There are enough of them that I don't want to write them out; in general they may be considered to access places in hopefully obvious ways, e.g. MAPCAR reads the CARs and CDRs throughout the list. Sometimes it is more complicated, for instance, CHANGE-CLASS is considered to write all slots of an instance non-atomically, and ADJUST-ARRAY to write all elements of an array (and the fill pointer, not-otherwise-writable "places" like the length, etc.) non-atomically.
+
+Clasp provides an atomic compare-and-swap operation on some places, as an extension. See MP:CAS. These accesses are sequentially consistent.
+
+1: At the moment it's actually monotonic, but this is an implementation detail, not a guarantee to rely on.
+2: It's supposed to be unordered, but I think there's a bug. see find_class_holder
+3: Uses a synchronized hash table right now.
