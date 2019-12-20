@@ -18,8 +18,8 @@ PLACE must be a CAS-able place. CAS-able places are either symbol macros,
 or accessor forms with a CAR of
 CAR, CDR, FIRST, REST, SVREF, SYMBOL-PLIST,
 SLOT-VALUE, CLOS:SLOT-VALUE-USING-CLASS, CLOS:STANDARD-INSTANCE-ACCESS,
-
-or one defined with DEFINE-CAS-EXPANDER.
+or a macro,
+or an accessor defined with DEFINE-CAS-EXPANDER.
 
 Some CAS accessors have additional semantic constraints.
 You can see their documentation with e.g. (documentation 'slot-value 'mp:cas)
