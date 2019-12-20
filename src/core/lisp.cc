@@ -1645,7 +1645,20 @@ CL_DEFUN T_sp core__find_class_holder(Symbol_sp symbol, T_sp env) {
   if (_lisp->bootClassTableIsValid()) {
     return _lisp->boot_findClassHolder(symbol,false);
   }
-  // Use the same global variable that ECL uses
+  // FIXME: This, and other code that makes a ClassHolder in the cache,
+  // could cause a bug in very obscure circumstances.
+  // Imagine two threads simultaneously try to find a class holder, and
+  // both find there isn't one. They both make a class holder. One puts
+  // it in the hash table, then the other does (overriding the first).
+  // Between these hash table sets, a third thread tries to find the
+  // class holder, e.g. for the FIND-CLASS cmacro. It gets in the first
+  // thread's class holder - and this soon becomes invalid, meaning
+  // this third thread won't see the effect of later (SETF FIND-CLASS)
+  // operations.
+  // To fix this, we should have the below code do a
+  // CAS_strong(hash table cell, NIL, new class holder). No need for
+  // a loop or anything. This way only one thread ever installs a
+  // class holder. But I don't think hash tables have CAS available.
   bool foundp;
   ClassHolder_sp cell;
   HashTable_sp classNames = _lisp->_Roots._ClassTable;
