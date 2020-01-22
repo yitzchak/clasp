@@ -3689,6 +3689,8 @@ class ClaspSectionMemoryManager : public SectionMemoryManager {
                                 unsigned SectionID,
                                 StringRef SectionName ) {
     uint8_t* ptr = this->SectionMemoryManager::allocateCodeSection(Size,Alignment,SectionID,SectionName);
+    my_thread->_text_segment_start = (void*)ptr;
+    my_thread->_text_segment_size = Size;
     if (llvmo::_sym_STARdebugObjectFilesSTAR->symbolValue().notnilp()) {
       printf("%s", ( BF("%s:%d  allocateCodeSection Size: %lu  Alignment: %u SectionId: %u SectionName: %s --> allocated at: %p\n") % __FILE__% __LINE__% Size% Alignment% SectionID% SectionName.str() % (void*)ptr ).str().c_str());
     }
@@ -3848,7 +3850,7 @@ void register_symbol_with_libunwind(const std::string& name, uint64_t start, siz
 #endif
 }
 
-void save_and_symbol_info(const llvm::object::ObjectFile& object_file, const llvm::RuntimeDyld::LoadedObjectInfo& loaded_object_info)
+void save_symbol_info(const llvm::object::ObjectFile& object_file, const llvm::RuntimeDyld::LoadedObjectInfo& loaded_object_info)
 {
   std::vector< std::pair< llvm::object::SymbolRef, uint64_t > > symbol_sizes = llvm::object::computeSymbolSizes(object_file);
   for ( auto p : symbol_sizes ) {
@@ -4201,7 +4203,7 @@ ClaspJIT_O::ClaspJIT_O(const llvm::DataLayout& data_layout) :_DataLayout(data_la
   this->LinkLayer->setProcessAllSections(true);
   this->LinkLayer->setNotifyLoaded( [&] (VModuleKey, const llvm::object::ObjectFile &Obj, const llvm::RuntimeDyld::LoadedObjectInfo &loadedObjectInfo) {
 //                                      printf("%s:%d  NotifyLoaded ObjectFile@%p\n", __FILE__, __LINE__, &Obj);
-                                      save_and_symbol_info(Obj,loadedObjectInfo);
+                                      save_symbol_info(Obj,loadedObjectInfo);
                                     });
 #endif
   auto JTMB = llvm::orc::JITTargetMachineBuilder::detectHost();
@@ -4265,6 +4267,37 @@ CL_DEFMETHOD void ClaspJIT_O::addIRModule(Module_sp module, ThreadSafeContext_sp
   ExitOnErr(this->CompileLayer->add(this->ES->getMainJITDylib(),llvm::orc::ThreadSafeModule(std::move(umodule),*context->wrappedPtr())));
 }
 
+void ClaspJIT_O::saveObjectFileInfo(const char* objectFileStart, size_t objectFileSize)
+{
+  ObjectFileInfo* ofi = new ObjectFileInfo();
+  ofi->_object_file_start = (void*)objectFileStart;
+  ofi->_object_file_size = objectFileSize;
+  ofi->_text_segment_start = my_thread->_text_segment_start;
+  ofi->_text_segment_size = my_thread->_text_segment_size;
+  ofi->_stackmap_start = (void*)my_thread->_stackmap;
+  ofi->_stackmap_size = my_thread->_stackmap_size;
+  ObjectFileInfo* expected;
+  ObjectFileInfo* current;
+  do {
+    current = this->_ObjectFiles.load();
+    ofi->_next = current;
+    expected = current;
+    this->_ObjectFiles.compare_exchange_strong(expected,ofi);
+  } while (expected!=current);
+}
+
+
+CL_DEFMETHOD size_t ClaspJIT_O::numberOfObjectFiles() {
+  ObjectFileInfo* cur = this->_ObjectFiles.load();
+  size_t count;
+  while (cur) {
+    cur = cur->_next;
+    count++;
+  }
+  return count;
+}
+
+
 void ClaspJIT_O::addObjectFile(const char* rbuffer, size_t bytes,size_t startupID, JITDylib& dylib,  bool print )
 {
   // Create an llvm::MemoryBuffer for the ObjectFile bytes
@@ -4281,6 +4314,9 @@ void ClaspJIT_O::addObjectFile(const char* rbuffer, size_t bytes,size_t startupI
   core::T_mv startup_name_and_linkage = core::core__startup_function_name_and_linkage(startupID);
   std::string startup_name = gc::As<core::String_sp>(startup_name_and_linkage)->get_std_string();
   core::Pointer_sp startup = this->lookup(dylib,startup_name);
+  // Now the my_thread thread local data structure will contain information about the new linked object file.
+  this->saveObjectFileInfo(rbuffer,bytes);
+  
   // Lookup the address of the ObjectFileStartUp function and invoke it
   void* thread_local_startup = startup->ptr();
   my_thread->_ObjectFileStartUp = NULL;
