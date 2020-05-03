@@ -249,7 +249,7 @@ CL_DEFUN void llvm_sys__disassemble_instructions(const std::string& striple,
                                                  core::Pointer_sp end_address)
 {
 #define DISASM_NUM_BYTES 32
-#define DISASM_OUT_STRING_SIZE 256 //128
+#define DISASM_OUT_STRING_SIZE 256
   if (global_disassemble_mutex == NULL) {
     global_disassemble_mutex = new mp::Mutex(DISSASSM_NAMEWORD);
   }
