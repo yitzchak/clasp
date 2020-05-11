@@ -119,13 +119,13 @@ get_quicklisp_cando ()
 {
     check_quicklisp t
     do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/cl-netcdf https://github.com/clasp-developers/cl-netcdf.git master
-    do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/static-vectors https://github.com/sionescu/static-vectors.git master
-    do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/trivial-garbage https://github.com/clasp-developers/trivial-garbage.git master
-    do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/bordeaux-threads https://github.com/clasp-developers/bordeaux-threads.git master
-    do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/cffi https://github.com/clasp-developers/cffi.git master
-    do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/usocket https://github.com/clasp-developers/usocket.git master
+    #do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/static-vectors https://github.com/sionescu/static-vectors.git master
+    #do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/trivial-garbage https://github.com/clasp-developers/trivial-garbage.git master
+    #do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/bordeaux-threads https://github.com/clasp-developers/bordeaux-threads.git master
+    #do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/cffi https://github.com/clasp-developers/cffi.git master
+    #do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/usocket https://github.com/clasp-developers/usocket.git master
     do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/uuid https://github.com/clasp-developers/uuid.git master
-    do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/trivial-backtrace https://github.com/clasp-developers/trivial-backtrace master
+    #do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/trivial-backtrace https://github.com/clasp-developers/trivial-backtrace master
     do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/esrap https://github.com/cando-developers/esrap master
 }
 
@@ -135,11 +135,9 @@ get_quicklisp_jupyter ()
     check_quicklisp t
 
     get_quicklisp_cando
-	do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/cl-jupyter https://github.com/drmeister/cl-jupyter.git origin/master
-	do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/cl-ipykernel https://github.com/clasp-developers/cl-ipykernel.git origin/master
-	do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/cl-ipywidgets https://github.com/clasp-developers/cl-ipywidgets.git origin/master
-	do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/cl-nglview https://github.com/clasp-developers/cl-nglview.git origin/master
-	do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/cl-bqplot https://github.com/clasp-developers/cl-bqplot.git origin/master
+	do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/common-lisp-jupyter https://github.com/yitzchak/common-lisp-jupyter.git origin/clasp-updates
+	do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/cl-nglview https://github.com/yitzchak/cl-nglview.git origin/y-migrate
+	#do_git_tree "$CLASP_QUICKLISP_DIRECTORY"/local-projects/cl-bqplot https://github.com/clasp-developers/cl-bqplot.git origin/master
 }
 
 
